@@ -1,0 +1,1445 @@
+{
+  "name": "PROSPECT DISCOVERY & DATA COLLECTION",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-512, -560],
+      "id": "7bcbd1d2-6f1a-4444-86f9-755c6e72d295",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-496, -192],
+      "id": "2d5cc65e-61a9-4d3d-8253-d5b1fbc0b576",
+      "name": "Schedule Trigger1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-544, 272],
+      "id": "ad364e5c-62b2-453c-b8f0-214786e9a87d",
+      "name": "Schedule Trigger2"
+    },
+    {
+      "parameters": {
+        "resource": "Actor tasks",
+        "operation": "Run task and get dataset",
+        "actorTaskId": {
+          "__rl": true,
+          "value": "YOUR_INSTAGRAM_SCRAPER_TASK_ID",
+          "mode": "list",
+          "cachedResultName": "n8n hashtag Scraper",
+          "cachedResultUrl": "https://console.apify.com/actors/tasks/0JqIV3hsWMpsUBZP1/input"
+        },
+        "timeout": {},
+        "authentication": "apifyOAuth2Api"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [-288, -560],
+      "id": "0ff8815e-9448-477d-b51f-7c47824a2da9",
+      "name": "Scrape Instagram Hashtags"
+    },
+    {
+      "parameters": {
+        "operation": "Run actor and get dataset",
+        "actorId": {
+          "__rl": true,
+          "value": "dSCLg0C3YEZ83HzYX",
+          "mode": "list",
+          "cachedResultName": "Instagram Profile Scraper (apify/instagram-profile-scraper)",
+          "cachedResultUrl": "https://console.apify.com/actors/dSCLg0C3YEZ83HzYX/input"
+        },
+        "customBody": "={\n    \"usernames\": [\n        \"{{ $json.ownerUsername }}\"\n    ]\n}",
+        "timeout": {},
+        "authentication": "apifyOAuth2Api"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [-64, -560],
+      "id": "050d471d-f075-452b-902d-31ed5458a955",
+      "name": "Get Profile Details",
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fdc8ae29-6c49-4b5d-b62e-221af25094b8",
+              "name": "username",
+              "value": "={{ $json.username }}",
+              "type": "string"
+            },
+            {
+              "id": "d4742614-d0d2-4fb1-bb5f-a334b0cfe9af",
+              "name": "fullName",
+              "value": "={{ $json.fullName }}",
+              "type": "string"
+            },
+            {
+              "id": "b7674073-f7a8-43cb-9e75-92a81140861d",
+              "name": "biography",
+              "value": "={{ $json.biography }}",
+              "type": "string"
+            },
+            {
+              "id": "9b84a03c-28f4-448e-b613-54e76c673858",
+              "name": "followersCount",
+              "value": "={{ $json.followersCount }}",
+              "type": "number"
+            },
+            {
+              "id": "3e39dbc8-fffd-49c1-b048-cd7a04461e50",
+              "name": "latestPosts[0].url",
+              "value": "={{ $json.latestPosts[0].url }}",
+              "type": "string"
+            },
+            {
+              "id": "bb96fcb9-7d42-401f-8a3c-e3314e03555c",
+              "name": "Profile URL",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [176, -560],
+      "id": "12d0930a-821d-46fa-be86-896cde6f5966",
+      "name": "Format Instagram Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Score prospects based on multiple criteria\nconst items = $input.all();\n\nreturn items.map(item => {\n  let score = 0;\n  const data = item.json;\n  \n  // Follower count scoring\n  if (data.followersCount >= 50000) score += 50;\n  else if (data.followersCount >= 10000) score += 30;\n  else if (data.followersCount >= 5000) score += 15;\n  \n  // Biography quality (has contact info or business keywords)\n  const bio = (data.biography || '').toLowerCase();\n  const businessKeywords = ['founder', 'ceo', 'business', 'entrepreneur', 'coach', 'consultant'];\n  if (businessKeywords.some(kw => bio.includes(kw))) score += 20;\n  \n  // Has recent posts\n  if (data['latestPosts[0].url']) score += 10;\n  \n  return {\n    json: {\n      ...data,\n      prospectScore: score,\n      scoreCategory: score >= 50 ? 'High' : score >= 30 ? 'Medium' : 'Low'\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [608, -560],
+      "id": "592d8fcb-ad2d-4e07-a228-e53290cacd41",
+      "name": "Score Instagram Prospects"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "High Quality (score >= 30)",
+                    "rightValue": "={{ $json.prospectScore >= 30 }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "0a55af71-1b27-49e1-bb36-e2ab3b51650d"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "High Quality"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "81c39a51-8561-4762-9385-eea27599c71e",
+                    "leftValue": "Low Quality (score < 30) ",
+                    "rightValue": "={{ $json.prospectScore < 30 }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Low Quality"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [816, -560],
+      "id": "9452a37f-e07f-45f5-8d83-461d4e4b7f9c",
+      "name": "Filter Qualified Prospects"
+    },
+    {
+      "parameters": {
+        "jsCode": "Conditions (Keep if ALL match):\n1. {{ $json.username }} is not empty\n2. {{ $json.followersCount }} is set\n3. {{ $json.biography }} is not empty\n4. {{ $json.followersCount > 0 }}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, -560],
+      "id": "985048d4-1da2-4f0e-a8d7-4fce04981f00",
+      "name": "Validate Instagram Data"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [1088, -576],
+      "id": "df48d7f4-b7d6-4fcc-842f-80e2896473b7",
+      "name": "Remove Duplicates"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Outreach",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_INSTAGRAM_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Instagram Prospects",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ/tblkqCwkieFVTgLPz"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Followers": "={{ $json.followersCount }}",
+            "Handle": "={{ $json.username }}",
+            "Name": "={{ $json.fullName }}",
+            "Bio": "={{ $json.biography }}",
+            "Recent Posts URLs": "={{ $json.latestPosts[0].url }}",
+            "Profile URL": "={{ $json['Profile URL'] }}",
+            "Status": "Discovered",
+            "Engagement Rate": 0
+          },
+          "matchingColumns": ["Handle"],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Handle",
+              "displayName": "Handle",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Bio",
+              "displayName": "Bio",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Followers",
+              "displayName": "Followers",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Recent Posts URLs",
+              "displayName": "Recent Posts URLs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Profile URL",
+              "displayName": "Profile URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Engagement Rate",
+              "displayName": "Engagement Rate",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Discovered",
+                  "value": "Discovered"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1312, -576],
+      "id": "1b32dbfb-65ff-4507-b40b-04595231dc82",
+      "name": "Save to Instagram Prospects",
+      "executeOnce": false,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"pipeline\": \"Instagram\",\n  \"executionTime\": \"{{ $workflow.timestamp }}\",\n  \"recordsProcessed\": \"{{ $json.id ? 1 : 0 }}\",\n  \"pipelineStatus\": \"Success\",\n  \"highQualityCount\": \"{{ $json.scoreCategory === 'High' ? 1 : 0 }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1520, -576],
+      "id": "af998f22-b97e-47df-a3d0-5a152839f676",
+      "name": "Log Instagram Metrics"
+    },
+    {
+      "parameters": {
+        "resource": "Actor tasks",
+        "operation": "Run task and get dataset",
+        "actorTaskId": {
+          "__rl": true,
+          "value": "YOUR_LINKEDIN_SCRAPER_TASK_ID",
+          "mode": "list",
+          "cachedResultName": "N8n Linkedin Scraper",
+          "cachedResultUrl": "https://console.apify.com/actors/tasks/gbA3N2LqLV9lQnEc9/input"
+        },
+        "timeout": {},
+        "authentication": "apifyOAuth2Api"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [-288, -192],
+      "id": "49f77888-712c-4493-b1a6-7dc4d7442b1c",
+      "name": "Scrape LinkedIn Companies"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "52aaa2cd-84b8-45aa-93c5-8fc3c1f61b55",
+              "name": "Profile URL",
+              "value": "={{ $json.url }}",
+              "type": "string"
+            },
+            {
+              "id": "9cb211d2-37b0-4208-a2f3-26afdf2879ee",
+              "name": "name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            },
+            {
+              "id": "154a529c-9590-4e74-82ed-80ce4c7220e5",
+              "name": "description",
+              "value": "={{ $json.description }}",
+              "type": "string"
+            },
+            {
+              "id": "360894a0-05c8-4cd0-92d0-2f47587e3f87",
+              "name": "industry",
+              "value": "={{ $json.industry[0] }}",
+              "type": "string"
+            },
+            {
+              "id": "e35ac809-6e73-4e93-bda7-524df6814ae2",
+              "name": "websiteUrl",
+              "value": "={{ $json.websiteUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "16752057-4bfb-43da-af7d-19ddbac5ec40",
+              "name": "Company Size",
+              "value": "={{ $json.employeeCount }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-48, -192],
+      "id": "3723b803-535c-4ea1-9cf9-93d9e6d611f7",
+      "name": "Format LinkedIn Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "Conditions (Keep if ALL match):\n1. {{ $json.name }} is not empty\n2. {{ $json.industry }} is set\n3. {{ $json.employeeCount }} > 0\n4. {{ $json.description }} is not empty"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [160, -192],
+      "id": "25f5d669-7b58-4fa0-8cbc-74dad864cc99",
+      "name": "Validate LinkedIn Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  let score = 0;\n  const data = item.json;\n  \n  // Company size scoring (ideal: 50-500 employees)\n  const size = data['Company Size'] || data.employeeCount || 0;\n  if (size >= 50 && size <= 500) score += 40;\n  else if (size >= 20 && size < 50) score += 25;\n  else if (size > 500) score += 15;\n  \n  // Has website\n  if (data.websiteUrl) score += 20;\n  \n  // Industry relevance (customize based on your ICP)\n  const targetIndustries = ['Technology', 'Software', 'SaaS', 'Marketing', 'E-commerce'];\n  if (targetIndustries.some(ind => (data.industry || '').includes(ind))) score += 30;\n  \n  // Description quality\n  if ((data.description || '').length > 100) score += 10;\n  \n  return {\n    json: {\n      ...data,\n      prospectScore: score,\n      scoreCategory: score >= 60 ? 'High' : score >= 35 ? 'Medium' : 'Low'\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [368, -192],
+      "id": "27fce7d9-5730-40a3-a772-dad7c8d15ab5",
+      "name": "Score LinkedIn Prospects"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "// Route 1: Qualified (score >= 35)",
+                    "rightValue": "={{ $json.prospectScore >= 35 }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "07e53186-7676-46f8-8ca7-b04ff8a14a97"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Qualified"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "52bd9a21-dd5a-4f18-8bd3-7414f54d56c1",
+                    "leftValue": "// Route 2: Low score - log only",
+                    "rightValue": "={{ $json.prospectScore < 35 }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Low score"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [592, -192],
+      "id": "dc14793f-ae76-4452-b973-d791afbd5d7e",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [848, -208],
+      "id": "c59cb53a-296e-4044-b85f-b6fc5d561e99",
+      "name": "Deduplicate LinkedIn Companies"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Outreach",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_LINKEDIN_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "LinkedIn Prospects",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ/tblSPVYU3LWkaO8Up"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company Size": "={{ $json['Company Size'] }}",
+            "Website": "={{ $json.websiteUrl }}",
+            "Company name": "={{ $json.name }}",
+            "Description": "={{ $json.description }}",
+            "Industry": "={{ $json.industry }}",
+            "Status": "Discovered",
+            "Profile URL": "={{ $json['Profile URL'] }}"
+          },
+          "matchingColumns": ["Company name"],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Website",
+              "displayName": "Website",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Description",
+              "displayName": "Description",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Industry",
+              "displayName": "Industry",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Company Size",
+              "displayName": "Company Size",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Profile URL",
+              "displayName": "Profile URL",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Discovered",
+                  "value": "Discovered"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Founder",
+              "displayName": "Founder",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "CEO name",
+              "displayName": "CEO name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [1056, -208],
+      "id": "d5d4b814-590b-4226-a81d-35f578be8c20",
+      "name": "Save to LinkedIn Prospects"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "=// Field 1: Pipeline Name\npipeline: LinkedIn\n\n// Field 2: Execution Timestamp\nexecutionTime: {{ $now.toISO() }}\n\n// Field 3: Total Records Scraped\nrecordsScraped: {{ $('Scrape LinkedIn Companies').itemMatching(0).json.length || $runIndex + 1 }}\n\n// Field 4: Records After Validation\nvalidRecords: {{ $('Validate LinkedIn Data').all().length }}\n\n// Field 5: High Quality Prospects\nhighQualityCount: {{ $('Score LinkedIn Prospects').all().filter(item => item.json.scoreCategory === 'High').length }}\n\n// Field 6: Medium Quality Prospects\nmediumQualityCount: {{ $('Score LinkedIn Prospects').all().filter(item => item.json.scoreCategory === 'Medium').length }}\n\n// Field 7: Records Saved to Airtable\nrecordsSaved: {{ $('Save to LinkedIn Prospects').all().length }}\n\n// Field 8: Pipeline Status\npipelineStatus: Success\n\n// Field 9: Execution Duration (seconds)\nexecutionDuration: {{ Math.floor(($now.toMillis() - $workflow.timestamp) / 1000) }}\n\n// Field 10: Workflow Execution ID\nexecutionId: {{ $execution.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1264, -208],
+      "id": "88460ca5-36ba-4c16-8631-b48780c3adc3",
+      "name": "Log LinkedIn Metrics"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "YOUR_SLACK_USER_ID",
+          "mode": "list",
+          "cachedResultName": "n8ncloud"
+        },
+        "text": "=// Simple Text Message\n✅ *LinkedIn Pipeline Complete*\n\n📊 *Summary:*\n- Total Scraped: {{ $('Log LinkedIn Metrics').item.json.recordsScraped }}\n- Saved: {{ $('Log LinkedIn Metrics').item.json.recordsSaved }}\n- 🌟 High Quality: {{ $('Log LinkedIn Metrics').item.json.highQualityCount }}\n- ⭐ Medium Quality: {{ $('Log LinkedIn Metrics').item.json.mediumQualityCount }}\n- Avg Score: {{ $('Log LinkedIn Metrics').item.json.averageProspectScore }}/100\n- Duration: {{ $('Log LinkedIn Metrics').item.json.executionDuration }}s\n\n💡 Top Industry: {{ $('Log LinkedIn Metrics').item.json.topIndustry }}\n\n<https://airtable.com/appIPp0FovNuedYxJ/tblSPVYU3LWkaO8Up|View Prospects>",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [1472, -208],
+      "id": "c521c40b-18bd-495d-804e-7d24df141ff8",
+      "name": "Send LinkedIn Success Notification",
+      "webhookId": "cf018136-480d-479f-9e78-e99d93e49836",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "Actor tasks",
+        "operation": "Run task and get dataset",
+        "actorTaskId": {
+          "__rl": true,
+          "value": "YOUR_MAPS_SCRAPER_TASK_ID",
+          "mode": "list",
+          "cachedResultName": "N8n Google Maps Email Extractor",
+          "cachedResultUrl": "https://console.apify.com/actors/tasks/NTdnP6mEBuN2gqFVN/input"
+        },
+        "timeout": {},
+        "authentication": "apifyOAuth2Api"
+      },
+      "type": "@apify/n8n-nodes-apify.apify",
+      "typeVersion": 1,
+      "position": [-336, 272],
+      "id": "8cd3a8bf-5ce3-4157-bce4-1fe1a413ece9",
+      "name": "Scrape Google Maps Businesses"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1f09e4ed-e624-4f45-b34b-e49badf4263a",
+              "name": "Name",
+              "value": "={{ $json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "2c6d6283-6525-4a90-bdb0-4800f7f33168",
+              "name": "Category",
+              "value": "={{ $json.categoryName }}",
+              "type": "string"
+            },
+            {
+              "id": "19b3b275-b5bd-4a23-a3ea-433c4e6c3f95",
+              "name": "Phone",
+              "value": "={{ $json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "413a542a-8817-4432-9fb5-498cd4e31129",
+              "name": "Date Discovered",
+              "value": "={{ $json.scrapedAt }}",
+              "type": "string"
+            },
+            {
+              "id": "7e889328-7b9d-4f4b-a1e8-102f832d1d9e",
+              "name": "totalScore",
+              "value": "={{ $json.totalScore }}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-96, 272],
+      "id": "218926af-eb4d-4dd2-85d2-9a2b32fe93f5",
+      "name": "Format Google Maps Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "Conditions (Keep if ALL match):\n1. {{ $json.Name }} is not empty\n2. {{ $json.Phone }} is set\n3. {{ $json.totalScore }} > 0"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [112, 272],
+      "id": "2f4eec28-cf58-496a-8a76-8360c0034a67",
+      "name": "Validate Maps Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nreturn items.map(item => {\n  let score = 0;\n  const data = item.json;\n  \n  // Review score (Google's totalScore is typically 1-5)\n  const rating = data.totalScore || 0;\n  if (rating >= 4.5) score += 40;\n  else if (rating >= 4.0) score += 30;\n  else if (rating >= 3.5) score += 15;\n  \n  // Has phone number\n  if (data.Phone) score += 20;\n  \n  // Category relevance (customize based on your target)\n  const targetCategories = ['Restaurant', 'Retail', 'Salon', 'Gym', 'Clinic'];\n  if (targetCategories.some(cat => (data.Category || '').includes(cat))) score += 25;\n  \n  // Recently scraped (data freshness)\n  score += 15;\n  \n  return {\n    json: {\n      ...data,\n      prospectScore: score,\n      scoreCategory: score >= 60 ? 'High' : score >= 40 ? 'Medium' : 'Low'\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [320, 272],
+      "id": "7a7f1729-0558-4988-b02d-c7556f931c04",
+      "name": "Score Maps Prospects"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "High Quality Prospects",
+                    "rightValue": "=// Condition {{ $json.prospectScore >= 60 }}  // Output: Route 1",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "d7e5579b-40c0-4d24-a605-f4f64fd30ab1"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "High Quality Prospects"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "afd72167-b450-4f72-b67e-98366b00eaaa",
+                    "leftValue": "Low Quality",
+                    "rightValue": "=// Condition {{ $json.prospectScore < 40 }}  // Output: Route 3",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Low Quality"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [528, 272],
+      "id": "c8988d71-bb13-4b69-b05b-0bfd934c62fc",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.removeDuplicates",
+      "typeVersion": 2,
+      "position": [784, 256],
+      "id": "81336cb7-e5bb-42eb-aaa5-bf1579f1967b",
+      "name": "Deduplicate Businesses"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "base": {
+          "__rl": true,
+          "value": "YOUR_AIRTABLE_BASE_ID",
+          "mode": "list",
+          "cachedResultName": "Outreach",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ"
+        },
+        "table": {
+          "__rl": true,
+          "value": "YOUR_MAPS_TABLE_ID",
+          "mode": "list",
+          "cachedResultName": "Google Maps Prospects",
+          "cachedResultUrl": "https://airtable.com/appIPp0FovNuedYxJ/tblEhQZf8PZyjEueV"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Total Score": "={{ $json.totalScore }}",
+            "Name": "={{ $json.Name }}",
+            "Category": "={{ $json.Category }}",
+            "Phone": "={{ $json.Phone }}",
+            "Date Discovered": "={{ $json['Date Discovered'] }}"
+          },
+          "matchingColumns": ["Name"],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Date Discovered",
+              "displayName": "Date Discovered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Total Score",
+              "displayName": "Total Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [992, 256],
+      "id": "0183b41c-e4b6-48d0-8f6b-2ffccb319878",
+      "name": "Save to Maps Prospects"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "=// Field mappings\npipeline: Google Maps\nexecutionTime: {{ $now.toISO() }}\nrecordsScraped: {{ $('Scrape Google Maps Businesses').all().length }}\nrecordsSaved: {{ $('Save to Maps Prospects').all().length }}\nhighQualityCount: {{ $('Score Maps Prospects').all().filter(item => item.json.scoreCategory === 'High').length }}\nexecutionDuration: {{ Math.floor(($now.toMillis() - $workflow.timestamp) / 1000) }}\npipelineStatus: Success\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, 256],
+      "id": "fbe543dc-70f9-4c77-8b22-bfa48c9e4231",
+      "name": "Log Maps Metrics"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "YOUR_SLACK_USER_ID",
+          "mode": "list",
+          "cachedResultName": "n8ncloud"
+        },
+        "text": "=🗺️ *Google Maps Pipeline Complete*\n\n📊 *Summary:*\n- Scraped: {{ $('Log Maps Metrics').item.json.recordsScraped }}\n- Saved: {{ $('Log Maps Metrics').item.json.recordsSaved }}\n- 🌟 High Quality: {{ $('Log Maps Metrics').item.json.highQualityCount }}\n- Avg Rating: {{ $('Log Maps Metrics').item.json.averageGoogleRating }}⭐\n- Phone Available: {{ $('Log Maps Metrics').item.json.phoneAvailabilityRate }}%\n\n📍 Top Category: {{ $('Log Maps Metrics').item.json.topCategory }}\n⏱️ Duration: {{ $('Log Maps Metrics').item.json.executionDuration }}s\n\n<https://airtable.com/appIPp0FovNuedYxJ/tblEhQZf8PZyjEueV|View Prospects>",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [1408, 256],
+      "id": "e8a02c34-ea6d-42a5-ada1-024f803d0feb",
+      "name": "Send Maps Success Notification",
+      "webhookId": "3b44d778-5546-4840-948e-c4162ff74972",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "YOUR_SLACK_USER_ID",
+          "mode": "list",
+          "cachedResultName": "n8ncloud"
+        },
+        "text": "=✅ Instagram Pipeline Complete\nSuccessfully processed Instagram prospects:\n- Records: {{ $('Log Instagram Metrics').item.json.recordsProcessed }}\n- High Quality: {{ $('Log Instagram Metrics').item.json.highQualityCount }}\n- Time: {{ $now.toFormat('yyyy-MM-dd HH:mm') }}\n\n",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [1696, -576],
+      "id": "cf3fbc82-a19c-4b29-a906-9d9b7eaae9f0",
+      "name": "Send Success Notification",
+      "webhookId": "096cb12f-7648-4134-8cc2-187cd197b5d9",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_SLACK_CREDENTIAL_ID",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Instagram Prospects",
+        "height": 336,
+        "width": 2576,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-608, -688],
+      "id": "761f3d1f-321d-442d-9538-62fbccf7f04a",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## LinkedIn Prospects",
+        "height": 384,
+        "width": 2576,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-608, -304],
+      "id": "eaa537f7-d240-4f0a-ac82-51ef33cc2881",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## Google Maps Prospects",
+        "height": 432,
+        "width": 2576,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-608, 128],
+      "id": "d2aabcba-2b9e-4c43-9b2f-a5010de32ba1",
+      "name": "Sticky Note2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Scrape Instagram Hashtags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Scrape LinkedIn Companies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger2": {
+      "main": [
+        [
+          {
+            "node": "Scrape Google Maps Businesses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Instagram Hashtags": {
+      "main": [
+        [
+          {
+            "node": "Get Profile Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Profile Details": {
+      "main": [
+        [
+          {
+            "node": "Format Instagram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Instagram Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Instagram Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Instagram Prospects": {
+      "main": [
+        [
+          {
+            "node": "Filter Qualified Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Qualified Prospects": {
+      "main": [
+        [
+          {
+            "node": "Remove Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Validate Instagram Data": {
+      "main": [
+        [
+          {
+            "node": "Score Instagram Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Instagram Prospects": {
+      "main": [
+        [
+          {
+            "node": "Log Instagram Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Duplicates": {
+      "main": [
+        [
+          {
+            "node": "Save to Instagram Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Instagram Metrics": {
+      "main": [
+        [
+          {
+            "node": "Send Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape LinkedIn Companies": {
+      "main": [
+        [
+          {
+            "node": "Format LinkedIn Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format LinkedIn Data": {
+      "main": [
+        [
+          {
+            "node": "Validate LinkedIn Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate LinkedIn Data": {
+      "main": [
+        [
+          {
+            "node": "Score LinkedIn Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score LinkedIn Prospects": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate LinkedIn Companies",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Deduplicate LinkedIn Companies": {
+      "main": [
+        [
+          {
+            "node": "Save to LinkedIn Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to LinkedIn Prospects": {
+      "main": [
+        [
+          {
+            "node": "Log LinkedIn Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log LinkedIn Metrics": {
+      "main": [
+        [
+          {
+            "node": "Send LinkedIn Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Google Maps Businesses": {
+      "main": [
+        [
+          {
+            "node": "Format Google Maps Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Google Maps Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Maps Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Maps Data": {
+      "main": [
+        [
+          {
+            "node": "Score Maps Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Maps Prospects": {
+      "main": [
+        [
+          {
+            "node": "Switch1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch1": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Businesses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Businesses": {
+      "main": [
+        [
+          {
+            "node": "Save to Maps Prospects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Maps Prospects": {
+      "main": [
+        [
+          {
+            "node": "Log Maps Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Maps Metrics": {
+      "main": [
+        [
+          {
+            "node": "Send Maps Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "16181b25-f04c-4777-81dc-b6a0bb148eee",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2ca6a66fcbe5d1b6767a684aff880375f4cd92f84a93aa715645f63c41a858d6"
+  },
+  "id": "HR4zSwCW6hnI8slu",
+  "tags": []
+}

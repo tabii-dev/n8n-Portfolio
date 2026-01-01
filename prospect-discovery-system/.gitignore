@@ -1,0 +1,35 @@
+# Credentials and sensitive data
+credentials.json
+.env
+.env.local
+.env.production
+config.json
+secrets.json
+*-original.json
+*-backup.json
+
+# API Keys and tokens
+api-keys.txt
+tokens.txt
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node modules
+node_modules/
+npm-debug.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Backup files
+*-BACKUP.json

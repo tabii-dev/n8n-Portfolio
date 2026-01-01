@@ -1,0 +1,1904 @@
+{
+  "name": "AI-Powered Lead Qualification & Routing System",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Normalize different payload structures into unified format\nconst incomingData = $input.all();\nconst normalizedLeads = [];\n\nfor (const item of incomingData) {\n  const payload = item.json;\n  let normalized = {\n    lead_id: `lead_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,\n    source: payload.source || 'unknown',\n    raw_payload: payload,\n    created_at: new Date().toISOString()\n  };\n\n  // Normalize based on source\n  switch(payload.source) {\n    case 'web_form':\n      normalized.first_name = payload.data?.firstName;\n      normalized.last_name = payload.data?.lastName;\n      normalized.email = payload.data?.email;\n      normalized.phone = payload.data?.phone;\n      normalized.company_name = payload.data?.company;\n      normalized.job_title = payload.data?.jobTitle;\n      normalized.company_website = payload.data?.website;\n      break;\n      \n    case 'linkedin':\n      normalized.first_name = payload.lead_data?.first_name;\n      normalized.last_name = payload.lead_data?.last_name;\n      normalized.email = payload.lead_data?.email;\n      normalized.phone = payload.lead_data?.phone;\n      normalized.company_name = payload.lead_data?.company_name;\n      normalized.job_title = payload.lead_data?.job_title;\n      break;\n      \n    case 'calendly':\n      const fullName = payload.payload?.invitee?.name?.split(' ') || [];\n      normalized.first_name = fullName[0];\n      normalized.last_name = fullName.slice(1).join(' ');\n      normalized.email = payload.payload?.invitee?.email;\n      normalized.phone = payload.payload?.invitee?.phone;\n      normalized.company_name = payload.payload?.invitee?.custom_answers?.company;\n      normalized.job_title = payload.payload?.invitee?.custom_answers?.job_title;\n      normalized.company_website = payload.payload?.invitee?.custom_answers?.website;\n      break;\n      \n    case 'hubspot':\n      const fields = payload.fields || [];\n      const getField = (name) => fields.find(f => f.name === name)?.value;\n      \n      normalized.first_name = getField('firstname');\n      normalized.last_name = getField('lastname');\n      normalized.email = getField('email');\n      normalized.phone = getField('phone');\n      normalized.company_name = getField('company');\n      normalized.job_title = getField('jobtitle');\n      normalized.company_website = getField('website');\n      break;\n  }\n\n  // Validation - reject if missing critical fields\n  if (!normalized.email || !normalized.company_name) {\n    normalized.status = 'error';\n    normalized.error_message = 'Missing required fields: email or company_name';\n  } else {\n    normalized.status = 'new';\n  }\n\n  normalizedLeads.push({ json: normalized });\n}\n\nreturn normalizedLeads;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2320,
+        -64
+      ],
+      "id": "47f5bb60-fe79-4662-aff4-298642dbf051",
+      "name": "Normalize Lead Data"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "YOUR_WEBHOOK_ID_HERE",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2544,
+        -64
+      ],
+      "id": "3ca3b9f5-b4c7-4e03-9153-e559c1306e53",
+      "name": "lead-intake",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Basic email validation and spam detection\nconst items = $input.all();\nconst validatedItems = [];\n\nconst disposableEmailDomains = [\n  'tempmail.com', 'guerrillamail.com', '10minutemail.com', \n  'throwaway.email', 'mailinator.com', 'yopmail.com'\n];\n\nconst companyEmailPatterns = [\n  '@gmail.com', '@yahoo.com', '@hotmail.com', '@outlook.com',\n  '@aol.com', '@icloud.com', '@mail.com'\n];\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  // Skip if already has error\n  if (lead.status === 'error') {\n    validatedItems.push(item);\n    continue;\n  }\n  \n  const email = lead.email?.toLowerCase();\n  const domain = email?.split('@')[1];\n  \n  // Check for disposable email\n  if (disposableEmailDomains.includes(domain)) {\n    lead.status = 'error';\n    lead.error_message = 'Disposable email detected';\n    validatedItems.push({ json: lead });\n    continue;\n  }\n  \n  // Flag personal emails (lower priority, not rejection)\n  lead.is_personal_email = companyEmailPatterns.some(pattern => \n    email?.includes(pattern)\n  );\n  \n  // Basic email format validation\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  if (!emailRegex.test(email)) {\n    lead.status = 'error';\n    lead.error_message = 'Invalid email format';\n    validatedItems.push({ json: lead });\n    continue;\n  }\n  \n  // Phone validation (basic)\n  if (lead.phone) {\n    const phoneClean = lead.phone.replace(/\\D/g, '');\n    if (phoneClean.length < 10) {\n      lead.phone = null; // Remove invalid phone, don't reject lead\n    }\n  }\n  \n  validatedItems.push({ json: lead });\n}\n\nreturn validatedItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2096,
+        -64
+      ],
+      "id": "ea18748e-165f-4c97-8dea-63b9b2458299",
+      "name": "Validate Email"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "email",
+              "keyValue": "={{ $json.email }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1648,
+        -64
+      ],
+      "id": "4c416a3b-a367-492b-86a9-a3e3af9619dc",
+      "name": "Check Duplicate Email",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5ce48a04-d221-4263-a935-183e4ae61284",
+              "leftValue": "={{ $json.created_at }}",
+              "rightValue": "True",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1424,
+        -64
+      ],
+      "id": "35481782-681b-4789-8813-10e2a0c5ff85",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "const newLead = $('Validate Email').first().json;\nconst existingLead = $('Check Duplicate Email').first().json;\n\n// Mark as duplicate\nnewLead.is_duplicate = true;\nnewLead.duplicate_of = existingLead.id;\nnewLead.status = 'duplicate';\n\n// Log that we found a duplicate within 24 hours\nconsole.log(`Duplicate lead found: ${newLead.email} - Original: ${existingLead.lead_id}`);\n\nreturn { json: newLead };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1200,
+        -160
+      ],
+      "id": "44d7f065-37a2-4245-bd55-3355a57ef750",
+      "name": "Mark as Duplicate"
+    },
+    {
+      "parameters": {
+        "tableId": "leads",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "lead_id",
+              "fieldValue": "={{ $('Validate Email').item.json.lead_id }}"
+            },
+            {
+              "fieldId": "source",
+              "fieldValue": "={{ $('Validate Email').item.json.source }}"
+            },
+            {
+              "fieldId": "first_name",
+              "fieldValue": "={{ $('Clean Data').item.json.first_name }}"
+            },
+            {
+              "fieldId": "last_name",
+              "fieldValue": "={{ $('Clean Data').item.json.last_name }}"
+            },
+            {
+              "fieldId": "email",
+              "fieldValue": "={{ $('Clean Data').item.json.email }}"
+            },
+            {
+              "fieldId": "phone",
+              "fieldValue": "={{ $('Clean Data').item.json.phone }}"
+            },
+            {
+              "fieldId": "company_name",
+              "fieldValue": "={{ $('Clean Data').item.json.company_name }}"
+            },
+            {
+              "fieldId": "job_title",
+              "fieldValue": "={{ $('Clean Data').item.json.job_title }}"
+            },
+            {
+              "fieldId": "company_website",
+              "fieldValue": "={{ $('Clean Data').item.json.company_website }}"
+            },
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $('Validate Email').item.json.status }}"
+            },
+            {
+              "fieldId": "is_duplicate",
+              "fieldValue": "=false"
+            },
+            {
+              "fieldId": "raw_payload",
+              "fieldValue": "={{ $('Clean Data').item.json.raw_payload.payload }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        32
+      ],
+      "id": "1a6fcbf1-e28f-4e16-b0d0-434aa387ff5e",
+      "name": "Insert New Lead",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "useCustomSchema": true,
+        "tableId": "lead_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "action",
+              "fieldValue": "={{ $json.is_duplicate }} : {{ $json.duplicate_of }} : {{ $json.created_at }}"
+            },
+            {
+              "fieldId": "details",
+              "fieldValue": "={{ $json.source }} : {{ $json.email }} : {{ $json.company_name }}\n"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -752,
+        -64
+      ],
+      "id": "8fa61cc6-04f1-4443-9a7c-7df26554c412",
+      "name": "Log Audit Trail",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1d621dd5-9411-4c1b-b40c-1f74e3d9e46f",
+              "name": "created_at",
+              "value": "={{ $json.created_at }}",
+              "type": "string"
+            },
+            {
+              "id": "53171672-48dd-43f9-8cb9-c76d82530975",
+              "name": "first_name",
+              "value": "={{ $json.first_name }}",
+              "type": "string"
+            },
+            {
+              "id": "dd72f0f8-e818-461c-ba3f-0e92716f670d",
+              "name": "last_name",
+              "value": "={{ $json.last_name }}",
+              "type": "string"
+            },
+            {
+              "id": "4c4fb185-75c1-4715-9257-25d7ba8f5766",
+              "name": "email",
+              "value": "={{ $json.email }}",
+              "type": "string"
+            },
+            {
+              "id": "abc3f9ef-eb16-431d-8ea3-5b33701ff0dc",
+              "name": "phone",
+              "value": "={{ $json.phone }}",
+              "type": "string"
+            },
+            {
+              "id": "c23316a0-d651-4253-9128-782bd55c1d71",
+              "name": "company_name",
+              "value": "={{ $json.company_name }}",
+              "type": "string"
+            },
+            {
+              "id": "8fb501c4-af8f-44eb-a79f-b8f965564c8b",
+              "name": "job_title",
+              "value": "={{ $json.job_title }}",
+              "type": "string"
+            },
+            {
+              "id": "bce0c8ed-af83-4244-adaf-4be7336f866f",
+              "name": "company_website",
+              "value": "={{ $json.company_website }}",
+              "type": "string"
+            },
+            {
+              "id": "1e6377ca-ecd6-482d-84be-d5fa2c0a5800",
+              "name": "status",
+              "value": "={{ $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "ef33fe99-2202-4d16-bd34-d7b8d1a57cf2",
+              "name": "is_personal_email",
+              "value": "={{ $json.is_personal_email }}",
+              "type": "boolean"
+            },
+            {
+              "id": "ccb1f68d-b0a7-4cde-965b-33be206706ff",
+              "name": "raw_payload.payload",
+              "value": "={{ $json.raw_payload.payload }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1872,
+        -64
+      ],
+      "id": "f3226d09-d2e1-42dc-8809-89e8fc6e4aea",
+      "name": "Clean Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the inserted lead\nconst lead = $input.first().json;\n\n// Add fields we'll need for enrichment\nconst enrichmentPayload = {\n  id: lead.id,\n  lead_id: lead.lead_id,\n  email: lead.email,\n  company_name: lead.company_name,\n  company_website: lead.company_website,\n  first_name: lead.first_name,\n  last_name: lead.last_name,\n  job_title: lead.job_title,\n  phone: lead.phone,\n  \n  // Extract domain from email if no website provided\n  email_domain: lead.email ? lead.email.split('@')[1] : null,\n  \n  // Set status\n  status: 'enriching',\n  enrichment_started_at: new Date().toISOString()\n};\n\n// Try to extract company domain from website or email\nif (lead.company_website) {\n  try {\n    const url = new URL(lead.company_website.startsWith('http') ? lead.company_website : 'https://' + lead.company_website);\n    enrichmentPayload.company_domain = url.hostname.replace('www.', '');\n  } catch (e) {\n    enrichmentPayload.company_domain = lead.company_website.replace('www.', '').replace('https://', '').replace('http://', '').split('/')[0];\n  }\n} else if (enrichmentPayload.email_domain) {\n  // Use email domain as fallback\n  enrichmentPayload.company_domain = enrichmentPayload.email_domain;\n}\n\nreturn { json: enrichmentPayload };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        0
+      ],
+      "id": "eaf41002-a3af-401a-9b66-723abf13a3c9",
+      "name": "Prepare for Enrichment"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the original lead data\nconst originalLead = $('Prepare for Enrichment').first().json;\n\n// Initialize enriched data structure\nlet enrichedData = {\n  id: originalLead.id,\n  lead_id: originalLead.lead_id,\n  company_domain: originalLead.company_domain,\n  enrichment_source: 'none',\n  enrichment_confidence: 0.0,\n  tech_stack: [],\n  buying_signals: {}\n};\n\n// Check if we have Clearbit data\nconst clearbitData = $('Clearbit Company Enrichment').all();\nif (clearbitData.length > 0 && clearbitData[0].json) {\n  const cb = clearbitData[0].json;\n  \n  enrichedData.enrichment_source = 'clearbit';\n  enrichedData.enrichment_confidence = 0.95;\n  \n  enrichedData.company_size = cb.metrics?.employees || null;\n  enrichedData.company_employees_range = cb.metrics?.employeesRange || null;\n  enrichedData.company_industry = cb.category?.industry || null;\n  enrichedData.company_founded_year = cb.foundedYear || null;\n  enrichedData.company_revenue_range = cb.metrics?.estimatedAnnualRevenue || null;\n  enrichedData.company_funding_total = cb.metrics?.raised || null;\n  enrichedData.company_location = cb.location ? `${cb.location.city}, ${cb.location.country}` : null;\n  enrichedData.company_description = cb.description || null;\n  enrichedData.company_linkedin_url = cb.linkedin?.handle ? `https://linkedin.com/company/${cb.linkedin.handle}` : null;\n  enrichedData.company_twitter_url = cb.twitter?.handle ? `https://twitter.com/${cb.twitter.handle}` : null;\n  \n  // Tech stack from Clearbit\n  if (cb.tech && Array.isArray(cb.tech)) {\n    enrichedData.tech_stack = cb.tech;\n  }\n  \n  console.log('✅ Clearbit enrichment successful');\n}\n// Check if we have Apollo data (fallback)\nelse {\n  const apolloData = $('Apollo Company Lookup').all();\n  if (apolloData.length > 0 && apolloData[0].json?.organization) {\n    const org = apolloData[0].json.organization;\n    \n    enrichedData.enrichment_source = 'apollo';\n    enrichedData.enrichment_confidence = 0.85;\n    \n    enrichedData.company_size = org.estimated_num_employees || null;\n    enrichedData.company_employees_range = org.employee_range || null;\n    enrichedData.company_industry = org.industry || null;\n    enrichedData.company_founded_year = org.founded_year || null;\n    enrichedData.company_revenue_range = org.estimated_annual_revenue || null;\n    enrichedData.company_location = org.city && org.country ? `${org.city}, ${org.country}` : null;\n    enrichedData.company_description = org.short_description || null;\n    enrichedData.company_linkedin_url = org.linkedin_url || null;\n    enrichedData.company_twitter_url = org.twitter_url || null;\n    \n    // Apollo doesn't provide tech stack directly\n    enrichedData.tech_stack = [];\n    \n    console.log('✅ Apollo enrichment successful (Clearbit fallback)');\n  } else {\n    console.log('⚠️ Both Clearbit and Apollo enrichment failed');\n    enrichedData.enrichment_source = 'failed';\n    enrichedData.enrichment_confidence = 0.0;\n  }\n}\n\n// Add buying signals detection\nenrichedData.buying_signals = {\n  has_funding: !!enrichedData.company_funding_total,\n  is_growing: enrichedData.company_size && parseInt(enrichedData.company_size) > 50,\n  has_tech_stack: enrichedData.tech_stack.length > 0,\n  recent_activity: false // We'll enhance this later\n};\n\nreturn { json: enrichedData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        704,
+        -16
+      ],
+      "id": "8959539c-1414-4378-b29b-d68638f12bfa",
+      "name": "Normalize Enrichment Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const enrichedData = $('Normalize Enrichment Data').first().json;\nconst originalLead = $('Prepare for Enrichment').first().json;\n\n// Initialize email validation data\nlet emailValidation = {\n  email_valid: false,\n  email_deliverable: false,\n  email_type: 'unknown',\n  email_quality_score: 0,\n  email_verification_details: {}\n};\n\n// Get Emailable validation result\nconst emailableData = $('Emailable - Verify Email').all();\n\nif (emailableData.length > 0 && emailableData[0].json) {\n  const validation = emailableData[0].json;\n  \n  // Map Emailable state to our boolean fields\n  emailValidation.email_valid = ['deliverable', 'risky'].includes(validation.state);\n  emailValidation.email_deliverable = validation.state === 'deliverable';\n  emailValidation.email_quality_score = validation.score || 0;\n  \n  // Determine email type\n  if (validation.disposable) {\n    emailValidation.email_type = 'disposable';\n    emailValidation.email_valid = false;\n  } else if (validation.role) {\n    emailValidation.email_type = 'role_based';\n  } else if (validation.free) {\n    emailValidation.email_type = 'personal';\n  } else {\n    emailValidation.email_type = 'corporate';\n  }\n  \n  // Store additional details\n  emailValidation.email_verification_details = {\n    state: validation.state,\n    reason: validation.reason,\n    is_role_account: validation.role,\n    is_free_email: validation.free,\n    is_disposable: validation.disposable,\n    accept_all_domain: validation.accept_all,\n    smtp_provider: validation.smtp_provider,\n    suggested_correction: validation.did_you_mean\n  };\n  \n  if (validation.did_you_mean) {\n    emailValidation.email_suggested_correction = validation.did_you_mean;\n  }\n  \n  console.log(`✅ Emailable validation: ${originalLead.email} - State: ${validation.state}, Score: ${validation.score}`);\n  \n} else {\n  // Fallback validation\n  console.log('⚠️ Emailable API failed, using basic validation');\n  \n  const email = originalLead.email;\n  const emailDomain = email.split('@')[1]?.toLowerCase();\n  \n  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$/;\n  emailValidation.email_valid = emailRegex.test(email);\n  \n  const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com'];\n  const disposableDomains = ['tempmail.com', 'guerrillamail.com', '10minutemail.com'];\n  \n  if (disposableDomains.includes(emailDomain)) {\n    emailValidation.email_type = 'disposable';\n    emailValidation.email_valid = false;\n  } else if (personalDomains.includes(emailDomain)) {\n    emailValidation.email_type = 'personal';\n  } else {\n    emailValidation.email_type = 'corporate';\n  }\n  \n  emailValidation.email_deliverable = emailValidation.email_valid;\n  emailValidation.email_quality_score = emailValidation.email_valid ? 50 : 0;\n}\n\n// Merge everything together\nconst finalData = {\n  ...enrichedData,\n  ...emailValidation,\n  enrichment_completed_at: new Date().toISOString()\n};\n\nreturn { json: finalData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        -16
+      ],
+      "id": "140f288f-73d5-47bf-bb2e-21fd54ebfb15",
+      "name": "Process Email Validation"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst originalLead = $('Prepare for Enrichment').first().json;\n\n// Decision maker title patterns\nconst cLevelTitles = ['ceo', 'cto', 'cfo', 'coo', 'cio', 'cmo', 'chief', 'founder', 'president', 'owner'];\nconst vpTitles = ['vp', 'vice president', 'v.p.', 'svp', 'evp'];\nconst directorTitles = ['director', 'head of', 'lead'];\nconst managerTitles = ['manager', 'senior manager'];\n\nconst jobTitle = (originalLead.job_title || '').toLowerCase();\n\nlet seniority = 'individual_contributor';\nlet isDecisionMaker = false;\nlet likelihood = 0.0;\n\nif (cLevelTitles.some(title => jobTitle.includes(title))) {\n  seniority = 'c_level';\n  isDecisionMaker = true;\n  likelihood = 0.95;\n} else if (vpTitles.some(title => jobTitle.includes(title))) {\n  seniority = 'vp';\n  isDecisionMaker = true;\n  likelihood = 0.90;\n} else if (directorTitles.some(title => jobTitle.includes(title))) {\n  seniority = 'director';\n  isDecisionMaker = true;\n  likelihood = 0.75;\n} else if (managerTitles.some(title => jobTitle.includes(title))) {\n  seniority = 'manager';\n  isDecisionMaker = false;\n  likelihood = 0.45;\n}\n\n// Boost likelihood if company is small (decision makers easier to reach)\nif (data.company_size && parseInt(data.company_size) < 50) {\n  likelihood = Math.min(0.95, likelihood + 0.15);\n  if (likelihood > 0.60) isDecisionMaker = true;\n}\n\nconsole.log(`Decision maker analysis: ${originalLead.job_title} → ${seniority} (${likelihood})`);\n\nconst finalData = {\n  ...data,\n  seniority_level: seniority,\n  is_decision_maker: isDecisionMaker,\n  decision_maker_likelihood: likelihood\n};\n\nreturn { json: finalData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        -16
+      ],
+      "id": "ca498f32-a702-44db-9c6d-f3e02127ded2",
+      "name": "Analyze Decision Maker"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// If we already have tech stack from Clearbit, enhance it\nlet techStack = data.tech_stack || [];\n\n// Add common tech signals based on company domain\nconst commonTechSignals = {\n  'aws': ['amazon', 'aws'],\n  'google_cloud': ['google', 'gcp'],\n  'azure': ['microsoft', 'azure'],\n  'stripe': ['stripe'],\n  'salesforce': ['salesforce'],\n  'hubspot': ['hubspot']\n};\n\n// Check if domain suggests tech usage\nif (data.company_domain) {\n  const domain = data.company_domain.toLowerCase();\n  \n  Object.keys(commonTechSignals).forEach(tech => {\n    const patterns = commonTechSignals[tech];\n    if (patterns.some(pattern => domain.includes(pattern))) {\n      if (!techStack.includes(tech)) {\n        techStack.push(tech);\n      }\n    }\n  });\n}\n\n// Industry-based tech predictions\nconst industryTechMapping = {\n  'software': ['aws', 'github', 'jira', 'slack'],\n  'saas': ['aws', 'stripe', 'intercom', 'segment'],\n  'fintech': ['aws', 'stripe', 'plaid', 'twilio'],\n  'ecommerce': ['shopify', 'stripe', 'klaviyo'],\n  'marketing': ['hubspot', 'marketo', 'segment', 'google_analytics']\n};\n\nif (data.company_industry) {\n  const industry = data.company_industry.toLowerCase();\n  \n  Object.keys(industryTechMapping).forEach(key => {\n    if (industry.includes(key)) {\n      const predictedTech = industryTechMapping[key];\n      predictedTech.forEach(tech => {\n        if (!techStack.includes(tech)) {\n          techStack.push(tech);\n        }\n      });\n    }\n  });\n}\n\n// Update buying signals with tech info\nconst buyingSignals = data.buying_signals || {};\nbuyingSignals.tech_stack_detected = techStack.length > 0;\nbuyingSignals.uses_cloud_platform = techStack.some(t => ['aws', 'google_cloud', 'azure'].includes(t));\nbuyingSignals.uses_modern_stack = techStack.some(t => ['react', 'vue', 'node', 'python', 'kubernetes'].includes(t));\n\nconsole.log(`Tech stack detected: ${techStack.join(', ')}`);\n\nreturn {\n  json: {\n    ...data,\n    tech_stack: techStack,\n    buying_signals: buyingSignals\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        -16
+      ],
+      "id": "806eb272-6914-4319-97a6-8d0572e208bb",
+      "name": "Detect Tech Stack Signals"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Calculate enrichment completeness score (0-100)\nlet score = 0;\nconst maxScore = 100;\nconst weights = {\n  company_domain: 5,\n  company_size: 10,\n  company_industry: 10,\n  company_revenue_range: 15,\n  company_location: 5,\n  company_description: 5,\n  tech_stack: 15,\n  email_verified: 10,\n  is_decision_maker: 15,\n  company_linkedin_url: 5,\n  company_funding_total: 5\n};\n\n// ... existing code ...\n\n// Add special handling for email quality after the forEach loop\nif (data.email_quality_score) {\n  const emailScore = data.email_quality_score;\n  if (emailScore >= 80) {\n    score += weights.email_verified;\n  } else if (emailScore >= 60) {\n    score += weights.email_verified * 0.7;\n  } else if (emailScore >= 40) {\n    score += weights.email_verified * 0.4;\n  }\n}\n\nObject.keys(weights).forEach(field => {\n  if (field === 'tech_stack') {\n    if (data[field] && data[field].length > 0) {\n      score += weights[field];\n    }\n  } else if (data[field] !== null && data[field] !== undefined && data[field] !== '') {\n    score += weights[field];\n  }\n});\n\n// Add quality indicators\nconst enrichmentQuality = {\n  score: score,\n  completeness: `${score}%`,\n  missing_critical_fields: [],\n  has_decision_maker: data.is_decision_maker || false,\n  has_company_data: !!(data.company_size && data.company_industry),\n  has_tech_signals: data.tech_stack && data.tech_stack.length > 0,\n  email_quality: data.email_quality_score >= 70 ? 'high' : data.email_quality_score >= 40 ? 'medium' : 'low',\n  email_verified: data.email_deliverable || false\n};\n\n// Identify missing critical fields\nconst criticalFields = ['company_size', 'company_industry', 'company_revenue_range'];\ncriticalFields.forEach(field => {\n  if (!data[field]) {\n    enrichmentQuality.missing_critical_fields.push(field);\n  }\n});\n\nconsole.log(`Enrichment quality score: ${score}/100`);\n\nreturn {\n  json: {\n    ...data,\n    enrichment_quality: enrichmentQuality,\n    status: 'enriched' // Update status\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1808,
+        -16
+      ],
+      "id": "ab1889d2-9964-416c-b0de-d52188d05a34",
+      "name": "Calculate Enrichment Score"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "company_domain",
+              "fieldValue": "={{ $json.company_domain }}"
+            },
+            {
+              "fieldId": "company_size",
+              "fieldValue": "={{ $json.company_size }}"
+            },
+            {
+              "fieldId": "company_industry",
+              "fieldValue": "={{ $json.company_industry }}"
+            },
+            {
+              "fieldId": "company_founded_year",
+              "fieldValue": "={{ $json.company_founded_year }}"
+            },
+            {
+              "fieldId": "company_employees_range",
+              "fieldValue": "={{ $json.company_employees_range }}"
+            },
+            {
+              "fieldId": "company_funding_total",
+              "fieldValue": "={{ $json.buying_signals.has_funding }}"
+            },
+            {
+              "fieldId": "company_revenue_range",
+              "fieldValue": "={{ $json.company_revenue_range }}"
+            },
+            {
+              "fieldId": "company_location",
+              "fieldValue": "={{ $json.company_location }}"
+            },
+            {
+              "fieldId": "company_description",
+              "fieldValue": "={{ $json.company_description }}"
+            },
+            {
+              "fieldId": "company_linkedin_url",
+              "fieldValue": "={{ $json.company_linkedin_url }}"
+            },
+            {
+              "fieldId": "company_twitter_url",
+              "fieldValue": "={{ $json.company_twitter_url }}"
+            },
+            {
+              "fieldId": "tech_stack",
+              "fieldValue": "={{ $json.buying_signals.tech_stack_detected }}"
+            },
+            {
+              "fieldId": "buying_signals",
+              "fieldValue": "={{ $json.buying_signals }}"
+            },
+            {
+              "fieldId": "is_decision_maker",
+              "fieldValue": "={{ $json.is_decision_maker }}"
+            },
+            {
+              "fieldId": "decision_maker_likelihood",
+              "fieldValue": "={{ $json.decision_maker_likelihood }}"
+            },
+            {
+              "fieldId": "seniority_level",
+              "fieldValue": "={{ $json.seniority_level }}"
+            },
+            {
+              "fieldId": "email_valid",
+              "fieldValue": "={{ $json.email_valid }}"
+            },
+            {
+              "fieldId": "email_deliverable",
+              "fieldValue": "={{ $json.email_deliverable }}"
+            },
+            {
+              "fieldId": "email_type",
+              "fieldValue": "={{ $json.email_type }}"
+            },
+            {
+              "fieldId": "enrichment_data",
+              "fieldValue": "={{ $json.enrichment_quality }}"
+            },
+            {
+              "fieldId": "enrichment_completed_at",
+              "fieldValue": "={{ $json.enrichment_completed_at }}"
+            },
+            {
+              "fieldId": "enrichment_source",
+              "fieldValue": "={{ $json.enrichment_source }}"
+            },
+            {
+              "fieldId": "enrichment_confidence",
+              "fieldValue": "={{ $json.enrichment_confidence }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        -16
+      ],
+      "id": "65ee12c4-2961-4466-b3af-fa904ea2e33e",
+      "name": "Save Enriched Data",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://api.apollo.io/api/v1/organizations/enrich",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "domain",
+              "value": "={{ $json.company_website }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "xZ-8vx7w-7bJZ_-SXHOteQ"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        368,
+        -16
+      ],
+      "id": "78d4e9a0-4c30-4e4d-bdb7-0091ddce5398",
+      "name": "Apollo Company Lookup"
+    },
+    {
+      "parameters": {
+        "url": "=https://company.clearbit.com/v2/companies/find?domain={{ $json.company_domain }}",
+        "authentication": "YOUR_API_KEY_HERE",
+        "genericAuthType": "YOUR_API_KEY_HERE",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        112,
+        -32
+      ],
+      "id": "f2af06d1-886e-4dc1-9e86-131590ede9a1",
+      "name": "Clearbit Company Enrichment",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Clearbit API"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://api.emailable.com/v1/verify",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "email",
+              "value": "={{ $('Prepare for Enrichment').item.json.email }}"
+            },
+            {
+              "name": "api_key",
+              "value": "live_7374ab6e9683eac86a2c"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        960,
+        -16
+      ],
+      "id": "b02b58ee-a13f-42c2-83f7-14da07904b62",
+      "name": "Emailable - Verify Email"
+    },
+    {
+      "parameters": {
+        "tableId": "lead_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "lead_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "action",
+              "fieldValue": "enrichment_completed"
+            },
+            {
+              "fieldId": "details",
+              "fieldValue": "=Source: {{ $('Calculate Enrichment Score').item.json.enrichment_source }}\nscore: {{ $('Calculate Enrichment Score').item.json.enrichment_quality.score }}\nConfidence: {{ $('Calculate Enrichment Score').item.json.enrichment_confidence }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2224,
+        -16
+      ],
+      "id": "a00eb1e1-ae3e-423c-a6c9-5293e7921525",
+      "name": "Log Enrichment Complete",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Foundation & Data Flow \n",
+        "height": 560,
+        "width": 2064,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2608,
+        -320
+      ],
+      "id": "9b46f814-e457-4909-a89a-dee86a818ffd",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Enrichment Pipeline\n",
+        "height": 544,
+        "width": 2672,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -272
+      ],
+      "id": "8198893f-0840-4f19-9ef2-186c9f2518ad",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -976,
+        -64
+      ],
+      "id": "3ec8a08c-831e-411f-bab9-0ea76de9799d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the enriched lead data\nconst lead = $input.first().json;\n\n// Compile all data for AI analysis\nconst icpData = {\n  // Lead identification\n  lead_id: lead.lead_id,\n  id: lead.id,\n  \n  // Contact info\n  contact: {\n    name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),\n    email: lead.email,\n    job_title: lead.job_title || 'Unknown',\n    seniority_level: lead.seniority_level || 'unknown',\n    is_decision_maker: lead.is_decision_maker || false,\n    decision_maker_likelihood: lead.decision_maker_likelihood || 0\n  },\n  \n  // Company data\n  company: {\n    name: lead.company_name,\n    domain: lead.company_domain,\n    website: lead.company_website,\n    size: lead.company_size || 'Unknown',\n    employees_range: lead.company_employees_range || 'Unknown',\n    industry: lead.company_industry || 'Unknown',\n    location: lead.company_location || 'Unknown',\n    founded_year: lead.company_founded_year,\n    description: (lead.company_description || 'No description available').substring(0, 500), // Truncate for API limits\n    revenue_range: lead.company_revenue_range || 'Unknown',\n    funding_total: lead.company_funding_total || 'Unknown',\n    funding_stage: lead.company_funding_stage || 'Unknown'\n  },\n  \n  // Tech stack (ensure it's an array)\n  tech_stack: Array.isArray(lead.tech_stack) ? lead.tech_stack : [],\n  \n  // Buying signals\n  buying_signals: lead.buying_signals || {},\n  \n  // Email quality\n  email_quality: {\n    valid: lead.email_valid || false,\n    deliverable: lead.email_deliverable || false,\n    type: lead.email_type || 'unknown',\n    quality_score: lead.email_quality_score || 0\n  },\n  \n  // Enrichment quality\n  enrichment: {\n    source: lead.enrichment_source || 'none',\n    confidence: lead.enrichment_confidence || 0,\n    completed_at: lead.enrichment_completed_at\n  },\n  \n  // Lead source\n  source: lead.source,\n  original_message: lead.raw_payload?.data?.message || lead.raw_payload?.payload?.invitee?.custom_answers?.challenge || null\n};\n\nconsole.log(`✅ Prepared ICP analysis for: ${icpData.company.name} (${icpData.contact.job_title})`);\n\nreturn { json: icpData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2400,
+        592
+      ],
+      "id": "7b46b2d7-bfb5-49d9-bbd9-e57e653b4f94",
+      "name": "Prepare ICP Analysis"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Evaluate this lead against our ICP criteria.\\n\\n## LEAD DATA\\n**Contact:**\\n- Name: {{ $json.contact.name }}\\n- Title: {{ $json.contact.job_title }}\\n- Seniority: {{ $json.contact.seniority_level }}\\n- Decision Maker: {{ $json.contact.is_decision_maker }} (likelihood: {{ $json.contact.decision_maker_likelihood }})\\n- Email Type: {{ $json.email_quality.type }} (score: {{ $json.email_quality.quality_score }}/100)\\n\\n**Company:**\\n- Name: {{ $json.company.name }}\\n- Industry: {{ $json.company.industry }}\\n- Size: {{ $json.company.size }} employees ({{ $json.company.employees_range }})\\n- Revenue: {{ $json.company.revenue_range }}\\n- Location: {{ $json.company.location }}\\n- Founded: {{ $json.company.founded_year }}\\n- Description: {{ $json.company.description }}\\n\\n**Tech Stack:** {{ $json.tech_stack.join(', ') || 'Unknown' }}\\n**Buying Signals:** {{ JSON.stringify($json.buying_signals) }}\\n**Lead Source:** {{ $json.source }}\\n{{ $json.original_message ? '**Message:** ' + $json.original_message : '' }}\\n\\n## OUR ICP\\n- Company Size: 50-500 employees (will consider 10-1000)\\n- Industries: SaaS, FinTech, E-commerce, MarTech, B2B Tech\\n- Decision Maker: VP+ or C-level preferred\\n- Revenue: $1M+ annual revenue\\n- Tech: Modern cloud platforms (AWS, GCP, Azure)\\n\\n## SCORING (100 points)\\n1. Company Size Fit (0-10)\\n2. Industry Alignment (0-15)\\n3. Revenue/Budget Fit (0-20)\\n4. Tech Stack Compatibility (0-10)\\n5. Decision Maker Authority (0-15)\\n6. Timeline Signals (0-10)\\n7. Competitive Threat (0-10)\\n8. Deal Size Potential (0-20)\\n\\n## TIERS\\n- A (85-100): Perfect fit, immediate outreach\\n- B (65-84): Good fit, standard qualification\\n- C (45-64): Partial fit, long-term nurture\\n- DISQUALIFIED (<45): Poor fit\\n\\nRespond with ONLY this JSON structure:\\n{\\n  \\\"tier\\\": \\\"A\\\"|\\\"B\\\"|\\\"C\\\"|\\\"DISQUALIFIED\\\",\\n  \\\"overall_score\\\": 0-100,\\n  \\\"confidence_score\\\": 0.0-1.0,\\n  \\\"component_scores\\\": {\\n    \\\"company_size_fit\\\": 0-10,\\n    \\\"industry_alignment\\\": 0-15,\\n    \\\"revenue_budget_fit\\\": 0-20,\\n    \\\"tech_stack_fit\\\": 0-10,\\n    \\\"decision_maker_fit\\\": 0-15,\\n    \\\"timeline_signals\\\": 0-10,\\n    \\\"competitive_threat\\\": 0-10,\\n    \\\"deal_size_potential\\\": 0-20\\n  },\\n  \\\"tier_reasoning\\\": \\\"1-2 sentence explanation\\\",\\n  \\\"key_strengths\\\": [\\\"strength 1\\\", \\\"strength 2\\\"],\\n  \\\"concerns\\\": [\\\"concern 1\\\"],\\n  \\\"recommended_talking_points\\\": [\\n    \\\"Specific point 1 about their company\\\",\\n    \\\"Specific point 2 addressing pain point\\\",\\n    \\\"Specific point 3 with social proof\\\"\\n  ],\\n  \\\"suggested_follow_up_angle\\\": \\\"Specific product feature or use case\\\",\\n  \\\"predicted_deal_size\\\": \\\"$X,XXX-$X,XXX/month\\\",\\n  \\\"predicted_close_timeline\\\": \\\"X-Y days\\\"\\n}\"\n   "
+            },
+            {
+              "role": "system",
+              "content": "You are an expert B2B SaaS sales analyst. Evaluate leads against ICP criteria and provide detailed scoring with reasoning. Always respond with valid JSON only."
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -2160,
+        592
+      ],
+      "id": "3263bd51-071e-4213-894b-2e72a17659e3",
+      "name": "OpenAI - Qualify Lead",
+      "retryOnFail": true,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "OpenAi account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const icpData = $('Prepare ICP Analysis').first().json;\n\n// Get AI response\nconst rawResponse = $input.first().json;\n\nlet aiResponse;\nlet modelUsed = 'gpt-5-mini';\n\n// Debug: Log the FULL raw response to see exact structure\nconsole.log('=== FULL RAW RESPONSE ===');\nconsole.log(JSON.stringify(rawResponse, null, 2));\nconsole.log('=== END RAW RESPONSE ===');\n\ntry {\n  let content;\n  \n  // Check if rawResponse is the array directly\n  if (Array.isArray(rawResponse)) {\n    console.log('Response is an array with length:', rawResponse.length);\n    \n    if (rawResponse.length > 0) {\n      const firstItem = rawResponse[0];\n      console.log('First item keys:', Object.keys(firstItem));\n      \n      // Navigate to output\n      if (firstItem.output) {\n        console.log('Found output, type:', typeof firstItem.output);\n        \n        if (Array.isArray(firstItem.output)) {\n          console.log('Output is array with length:', firstItem.output.length);\n          \n          if (firstItem.output.length > 0) {\n            const firstOutput = firstItem.output[0];\n            console.log('First output keys:', Object.keys(firstOutput));\n            \n            // Navigate to content\n            if (firstOutput.content) {\n              console.log('Found content, type:', typeof firstOutput.content);\n              \n              if (Array.isArray(firstOutput.content)) {\n                console.log('Content is array with length:', firstOutput.content.length);\n                \n                if (firstOutput.content.length > 0) {\n                  const firstContent = firstOutput.content[0];\n                  console.log('First content keys:', Object.keys(firstContent));\n                  \n                  // Get the text\n                  if (firstContent.text) {\n                    content = firstContent.text;\n                    console.log('✅ Successfully extracted text from GPT-5 mini format');\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n  // Handle if rawResponse has the output property directly\n  else if (rawResponse.output) {\n    console.log('Response has output property directly');\n    \n    if (Array.isArray(rawResponse.output) && rawResponse.output[0]?.content?.[0]?.text) {\n      content = rawResponse.output[0].content[0].text;\n      console.log('✅ Extracted text from direct output property');\n    }\n  }\n  // Handle standard OpenAI format\n  else if (rawResponse.choices && rawResponse.choices[0]?.message?.content) {\n    console.log('Detected standard OpenAI format');\n    content = rawResponse.choices[0].message.content;\n    modelUsed = rawResponse.model || 'gpt-4o-mini';\n  }\n  \n  if (!content) {\n    throw new Error('Could not extract content. Top-level keys: ' + Object.keys(rawResponse).join(', '));\n  }\n\n  console.log('Extracted content length:', content.length);\n  console.log('Content preview:', content.substring(0, 300));\n\n  // Parse JSON (handle potential markdown wrapping)\n  content = content.trim();\n  \n  const jsonMatch = content.match(/```json\\s*([\\s\\S]*?)\\s*```/);\n  if (jsonMatch) {\n    aiResponse = JSON.parse(jsonMatch[1]);\n    console.log('✅ Parsed JSON from markdown block');\n  } else {\n    aiResponse = JSON.parse(content);\n    console.log('✅ Parsed raw JSON');\n  }\n  \n  console.log('Parsed AI response tier:', aiResponse.tier);\n  console.log('Parsed AI response score:', aiResponse.overall_score);\n  \n} catch (error) {\n  console.error('❌ Parsing failed:', error.message);\n  console.error('Error stack:', error.stack);\n  \n  // Use fallback response\n  aiResponse = {\n    tier: 'C',\n    overall_score: 50,\n    confidence_score: 0.3,\n    component_scores: {\n      company_size_fit: 5,\n      industry_alignment: 5,\n      revenue_budget_fit: 10,\n      tech_stack_fit: 5,\n      decision_maker_fit: 5,\n      timeline_signals: 5,\n      competitive_threat: 5,\n      deal_size_potential: 10\n    },\n    tier_reasoning: 'AI parsing failed - manual review needed: ' + error.message,\n    key_strengths: ['Requires manual review'],\n    concerns: ['AI qualification failed: ' + error.message],\n    recommended_talking_points: [\n      'Manual qualification required',\n      'Review lead details',\n      'Schedule qualification call'\n    ],\n    suggested_follow_up_angle: 'Manual qualification needed',\n    predicted_deal_size: 'Unknown',\n    predicted_close_timeline: 'Unknown'\n  };\n  \n  console.warn('⚠️ Using fallback qualification data');\n}\n\n// Validate AI response structure\nif (!aiResponse || !aiResponse.tier || aiResponse.overall_score === undefined) {\n  console.error('Invalid AI response structure:', JSON.stringify(aiResponse));\n  throw new Error('Invalid AI response: Missing required fields');\n}\n\n// Validate tier value\nconst validTiers = ['A', 'B', 'C', 'DISQUALIFIED'];\nif (!validTiers.includes(aiResponse.tier)) {\n  console.warn(`⚠️ Invalid tier \"${aiResponse.tier}\", defaulting to C`);\n  aiResponse.tier = 'C';\n}\n\n// Ensure score is within bounds\naiResponse.overall_score = Math.max(0, Math.min(100, Math.round(aiResponse.overall_score)));\n\n// Ensure confidence is decimal\nif (aiResponse.confidence_score > 1) {\n  aiResponse.confidence_score = aiResponse.confidence_score / 100;\n}\n\n// Ensure arrays exist\naiResponse.key_strengths = Array.isArray(aiResponse.key_strengths) ? aiResponse.key_strengths : [];\naiResponse.concerns = Array.isArray(aiResponse.concerns) ? aiResponse.concerns : [];\naiResponse.recommended_talking_points = Array.isArray(aiResponse.recommended_talking_points) ? aiResponse.recommended_talking_points : [];\n\n// Build final qualification data\nconst qualificationData = {\n  id: icpData.id,\n  lead_id: icpData.lead_id,\n  ai_score: aiResponse.overall_score,\n  ai_tier: aiResponse.tier,\n  ai_tier_reasoning: aiResponse.tier_reasoning || 'No reasoning provided',\n  ai_confidence: aiResponse.confidence_score,\n  ai_component_scores: aiResponse.component_scores,\n  ai_key_strengths: aiResponse.key_strengths,\n  ai_concerns: aiResponse.concerns,\n  ai_talking_points: aiResponse.recommended_talking_points,\n  ai_suggested_angle: aiResponse.suggested_follow_up_angle || 'Standard approach',\n  ai_predicted_deal_size: aiResponse.predicted_deal_size || 'Unknown',\n  ai_predicted_close_timeline: aiResponse.predicted_close_timeline || 'Unknown',\n  ai_qualified_at: new Date().toISOString(),\n  ai_model_used: modelUsed,\n  status: 'qualified'\n};\n\nconsole.log(`✅ Lead qualified: ${icpData.company.name} - Tier ${aiResponse.tier} (${aiResponse.overall_score}/100)`);\n\nreturn { json: qualificationData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1808,
+        592
+      ],
+      "id": "ab417aac-a95d-40d4-8de1-a544f2e0dbcc",
+      "name": "Parse AI Qualification"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "={{ $json.status }}"
+            },
+            {
+              "fieldId": "ai_score",
+              "fieldValue": "={{ $json.ai_score }}"
+            },
+            {
+              "fieldId": "ai_tier",
+              "fieldValue": "={{ $json.ai_tier }}"
+            },
+            {
+              "fieldId": "ai_tier_reasoning",
+              "fieldValue": "={{ $json.ai_tier_reasoning }}"
+            },
+            {
+              "fieldId": "ai_confidence",
+              "fieldValue": "={{ $json.ai_confidence }}"
+            },
+            {
+              "fieldId": "ai_component_scores",
+              "fieldValue": "={{ $json.ai_component_scores }}"
+            },
+            {
+              "fieldId": "ai_key_strengths",
+              "fieldValue": "={{ $json.ai_key_strengths }}"
+            },
+            {
+              "fieldId": "ai_concerns",
+              "fieldValue": "={{ $json.ai_concerns }}"
+            },
+            {
+              "fieldId": "ai_talking_points",
+              "fieldValue": "={{ $json.ai_talking_points }}"
+            },
+            {
+              "fieldId": "ai_suggested_angle",
+              "fieldValue": "={{ $json.ai_suggested_angle }}"
+            },
+            {
+              "fieldId": "ai_predicted_deal_size",
+              "fieldValue": "={{ $json.ai_predicted_deal_size }}"
+            },
+            {
+              "fieldId": "ai_predicted_close_timeline",
+              "fieldValue": "={{ $json.ai_predicted_close_timeline }}"
+            },
+            {
+              "fieldId": "ai_qualified_at",
+              "fieldValue": "={{ $json.ai_qualified_at }}"
+            },
+            {
+              "fieldId": "ai_model_used",
+              "fieldValue": "={{ $json.ai_model_used }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1600,
+        592
+      ],
+      "id": "9f56cf45-a9ef-4a9e-b50a-28a3edca9714",
+      "name": "Save AI Qualification",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## AI Qualification Engine\n",
+        "height": 496,
+        "width": 1680,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2496,
+        288
+      ],
+      "id": "d0afd8fd-6464-4b6e-a380-5b565c0378ec",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "tableId": "lead_audit_log",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "lead_id",
+              "fieldValue": "={{ $json.id }}"
+            },
+            {
+              "fieldId": "action",
+              "fieldValue": "ai_qualified"
+            },
+            {
+              "fieldId": "details",
+              "fieldValue": "=tier: {{ $json.ai_tier }} \nscore: {{ $json.ai_score }}\nconfidence: {{ $json.ai_confidence }}\nmodel: {{ $json.ai_model_used }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1392,
+        592
+      ],
+      "id": "ab6d80bb-d012-4066-981b-ca8b2ce926b5",
+      "name": "Log AI Qualification",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "da454196-b829-43f9-ba54-39548d5a46b4",
+              "leftValue": "={{ $('Parse AI Qualification').item.json.ai_tier }}",
+              "rightValue": "A",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "fd5b3a84-e324-4b59-8069-9c6eb1e27de0",
+              "leftValue": "={{ $('Parse AI Qualification').item.json.ai_tier }}",
+              "rightValue": "B",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        592
+      ],
+      "id": "b0e938da-3327-4b99-b3b5-5d988ad01402",
+      "name": "Route by Tier"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lead_id",
+              "keyValue": "={{ $('Save AI Qualification').item.json.lead_id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        64,
+        496
+      ],
+      "id": "3a4f2bc9-5bd1-4dff-89db-5cf90b88d91c",
+      "name": "Get Full Lead Data",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "sales_reps",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        272,
+        496
+      ],
+      "id": "a79b26c9-1ca4-4816-9756-b3b188c4d64c",
+      "name": "Find Available Sales Rep",
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all active sales reps from previous node\nconst items = $input.all();\n\n// Sort by current_load ascending (lowest first)\nconst sortedItems = items.sort((a, b) => {\n  const loadA = a.json.current_load || 0;\n  const loadB = b.json.current_load || 0;\n  return loadA - loadB;\n});\n\n// Return only the first item (rep with lowest load)\nreturn sortedItems.slice(0, 1);"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        496
+      ],
+      "id": "139b0b05-5cec-40d6-ad3f-ff9207a41c98",
+      "name": "Filter and Sort Sales Reps"
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Get Full Lead Data').first().json;\nconst salesRep = $('Find Available Sales Rep').first().json;\n\n// Build assignment data\nconst assignment = {\n  lead_id: lead.id,\n  lead_data: {\n    name: `${lead.first_name} ${lead.last_name}`,\n    email: lead.email,\n    company: lead.company_name,\n    job_title: lead.job_title,\n    ai_tier: lead.ai_tier,\n    ai_score: lead.ai_score,\n    ai_talking_points: lead.ai_talking_points,\n    ai_predicted_deal_size: lead.ai_predicted_deal_size,\n    company_industry: lead.company_industry,\n    company_size: lead.company_size\n  },\n  sales_rep: {\n    id: salesRep.id,\n    name: salesRep.name,\n    email: salesRep.email,\n    territory: salesRep.territory\n  },\n  assignment_reason: `Auto-assigned based on availability (current load: ${salesRep.current_load}/${salesRep.max_capacity})`\n};\n\nconsole.log(`✅ Assigned ${lead.company_name} to ${salesRep.name}`);\n\nreturn { json: assignment };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        496
+      ],
+      "id": "3b1c8503-9a77-4a1c-b190-b7e22630609d",
+      "name": "Assign Sales Rep"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "leads",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.lead_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "assigned_to_rep_id",
+              "fieldValue": "={{ $json.sales_rep.id }}"
+            },
+            {
+              "fieldId": "assigned_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            },
+            {
+              "fieldId": "assignment_reason",
+              "fieldValue": "={{ $json.assignment_reason }}"
+            },
+            {
+              "fieldId": "hubspot_contact_id",
+              "fieldValue": "={{ $('Extract HubSpot IDs').item.json.hubspot_contact_id }}"
+            },
+            {
+              "fieldId": "hubspot_deal_id",
+              "fieldValue": "={{ $('Extract HubSpot IDs').item.json.hubspot_deal_id }}"
+            },
+            {
+              "fieldId": "hubspot_deal_stage",
+              "fieldValue": "={{ $('Extract HubSpot IDs').item.json.hubspot_deal_stage }}"
+            },
+            {
+              "fieldId": "hubspot_deal_amount",
+              "fieldValue": "={{ $('Extract HubSpot IDs').item.json.hubspot_deal_amount }}"
+            },
+            {
+              "fieldId": "hubspot_synced_at",
+              "fieldValue": "={{ $('Extract HubSpot IDs').item.json.hubspot_synced_at }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2256,
+        496
+      ],
+      "id": "390686ff-946f-4583-90cb-250d7d352e03",
+      "name": "Update Lead Assignment",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "sales_reps",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $json.assigned_to_rep_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "current_load",
+              "fieldValue": "={{ $('Find Available Sales Rep').item.json.current_load + 1 }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2464,
+        496
+      ],
+      "id": "65a518ad-d5cf-4810-9a13-e812a5331629",
+      "name": "Increment Rep Load",
+      "credentials": {
+        "supabaseApi": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A31HAH125",
+          "mode": "list",
+          "cachedResultName": "all-first-p-roject"
+        },
+        "text": "=🔥 NEW {{ $('Assign Sales Rep').item.json.lead_data.ai_tier }}-TIER LEAD - IMMEDIATE ACTION\n\nCompany: {{ $('Assign Sales Rep').item.json.lead_data.company }}\nContact: {{ $('Assign Sales Rep').item.json.lead_data.name }} | {{ $('Assign Sales Rep').item.json.lead_data.job_title }}\nEmail: {{ $('Assign Sales Rep').item.json.lead_data.email }}\nAI Qualification Score:* {{ $('Assign Sales Rep').item.json.lead_data.ai_score }}/100 ({{ $('Assign Sales Rep').item.json.lead_data.ai_tier }}-Tier)\nPredicted Deal Size: {{ $('Assign Sales Rep').item.json.lead_data.ai_predicted_deal_size }}\nIndustry:{{ $('Assign Sales Rep').item.json.lead_data.company_industry }}\nCompany Size:* {{ $('Assign Sales Rep').item.json.lead_data.company_size }} employees\n🎯 Assigned To:* {{ $('Assign Sales Rep').item.json.sales_rep.name }}\nAI TALKING POINTS:{{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[0] ? '1️⃣ ' + $('Assign Sales Rep').item.json.lead_data.ai_talking_points[0] : '' }} {{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[1] ? '2️⃣ ' + $('Assign Sales Rep').item.json.lead_data.ai_talking_points[1] : '' }} {{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[2] ? '3️⃣ ' + $('Assign Sales Rep').item.json.lead_data.ai_talking_points[2] : '' }}\n⏰ Action: Call within 30 minutes for A-tier, 24 hours for B-tier\n",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        2672,
+        496
+      ],
+      "id": "8345ed22-3f22-450f-a3ef-0eaa9621db5e",
+      "name": "Slack - Notify Sales Team",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Parse AI Qualification').first().json;\n\nconsole.log(`📋 Low priority lead: ${lead.ai_tier} tier - No immediate action needed`);\n\nreturn { \n  json: {\n    lead_id: lead.id,\n    tier: lead.ai_tier,\n    action: 'logged_only',\n    message: `${lead.ai_tier}-tier lead logged for future nurture`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        688
+      ],
+      "id": "58cefe9c-440d-44ef-b185-d71a2c8983ba",
+      "name": "Log Low Priority Lead"
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C0A31HAH125",
+          "mode": "list",
+          "cachedResultName": "all-first-p-roject"
+        },
+        "text": "=📊 New {{ $('Parse AI Qualification').item.json.ai_tier }}-Tier Lead (No immediate action)\nCompany: {{ $('Prepare ICP Analysis').item.json.company.name }}\nContact: {{ $('Prepare ICP Analysis').item.json.contact.name }}\nScore: {{ $('Parse AI Qualification').item.json.ai_score }}/100\n\nAdded to nurture sequence - no sales action required\n",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        272,
+        688
+      ],
+      "id": "35ca85d9-a887-4659-a8da-bf2ae03db649",
+      "name": "Slack - Log C-Tier Lead",
+      "webhookId": "YOUR_WEBHOOK_ID_HERE",
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "operation": "search",
+        "limit": 1,
+        "filterGroupsUi": {
+          "filterGroupsValues": [
+            {
+              "filtersUi": {
+                "filterValues": [
+                  {
+                    "propertyName": "email|string",
+                    "value": "={{ $json.lead_data.email }}"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        496
+      ],
+      "id": "d27ec3e6-f9de-4244-8c9c-6df955f6eeb5",
+      "name": "Check Existing Contact",
+      "alwaysOutputData": true,
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1246a38b-2d9b-443d-9328-12ed4964e3c0",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        496
+      ],
+      "id": "467b71d4-0a30-47b5-a62a-8d6c92011809",
+      "name": "Contact Exists?"
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "email": "={{ $('Assign Sales Rep').item.json.lead_data.email }}",
+        "additionalFields": {
+          "companyName": "={{ $('Assign Sales Rep').item.json.lead_data.company }}",
+          "firstName": "={{ $('Assign Sales Rep').item.json.lead_data.name.split(' ')[0] }}",
+          "jobTitle": "={{ $('Assign Sales Rep').item.json.lead_data.job_title }}",
+          "lastName": "={{ $('Assign Sales Rep').item.json.lead_data.name.split(' ').slice(1).join(' ') }}",
+          "leadStatus": "OPEN"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        368
+      ],
+      "id": "07adce25-9169-45a1-937e-ae72fc797eea",
+      "name": "Update Contact",
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "email": "={{ $('Assign Sales Rep').item.json.lead_data.email }}",
+        "additionalFields": {
+          "companyName": "={{ $('Assign Sales Rep').item.json.lead_data.company }}",
+          "firstName": "={{ $('Assign Sales Rep').item.json.lead_data.name.split(' ')[0] }}",
+          "jobTitle": "={{ $('Assign Sales Rep').item.json.lead_data.job_title }}",
+          "lastName": "={{ $('Assign Sales Rep').item.json.lead_data.name.split(' ').slice(1).join(' ') }}",
+          "leadStatus": "OPEN",
+          "phoneNumber": "={{ $('Get Full Lead Data').item.json.phone }}",
+          "websiteUrl": "={{ $('Get Full Lead Data').item.json.company_website }}"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        624
+      ],
+      "id": "a961bbcb-789d-4d51-8f40-a198a755106e",
+      "name": "Create Contact",
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1600,
+        496
+      ],
+      "id": "99cd35c2-9dda-429b-992c-66b294778837",
+      "name": "erge HubSpot Contact"
+    },
+    {
+      "parameters": {
+        "authentication": "YOUR_API_KEY_HERE",
+        "resource": "deal",
+        "stage": "appointmentscheduled",
+        "additionalFields": {
+          "amount": "={{ $('Assign Sales Rep').item.json.lead_data.ai_predicted_deal_size.match(/\\\\d+/g) ? parseInt($('Assign Sales Rep').item.json.lead_data.ai_predicted_deal_size.match(/\\\\d+/g)[0]) * 12 : 0 }}",
+          "closeDate": "={{ new Date(Date.now() + 30*24*60*60*1000).toISOString() }}",
+          "description": "=AI Qualification Score: {{ $('Assign Sales Rep').item.json.lead_data.ai_score }}/100\nTier: {{ $('Assign Sales Rep').item.json.lead_data.ai_tier }}\n\nCompany Details:\n- Industry: {{ $('Assign Sales Rep').item.json.lead_data.company_industry }}\n- Size: {{ $('Assign Sales Rep').item.json.lead_data.company_size }} employees\n\nAI Talking Points:\n1. {{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[0] }}\n2. {{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[1] }}\n3. {{ $('Assign Sales Rep').item.json.lead_data.ai_talking_points[2] }}",
+          "dealName": "={{ $('Assign Sales Rep').item.json.lead_data.company }} - {{ $('Assign Sales Rep').item.json.lead_data.ai_tier }} Tier",
+          "pipeline": "default"
+        }
+      },
+      "type": "n8n-nodes-base.hubspot",
+      "typeVersion": 2.2,
+      "position": [
+        1808,
+        496
+      ],
+      "id": "45c1e258-4de0-4ab6-9145-76581bcfe7d3",
+      "name": "Create Deal",
+      "credentials": {
+        "hubspotOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID_HERE",
+          "name": "HubSpot account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Assign Sales Rep').first().json;\nconst contact = $('Merge HubSpot Contact').first().json;\nconst deal = $('HubSpot - Create Deal').first().json;\n\nconst hubspotData = {\n  lead_id: lead.lead_id,\n  hubspot_contact_id: contact.id || contact.vid || null,\n  hubspot_deal_id: deal.id || null,\n  hubspot_deal_stage: deal.properties?.dealstage || 'appointmentscheduled',\n  hubspot_deal_amount: deal.properties?.amount || 0,\n  hubspot_synced_at: new Date().toISOString()\n};\n\nconsole.log(`✅ HubSpot sync complete - Contact: ${hubspotData.hubspot_contact_id}, Deal: ${hubspotData.hubspot_deal_id}`);\n\nreturn { json: hubspotData };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2016,
+        496
+      ],
+      "id": "6b47733d-6869-4467-987e-731ea6b70b69",
+      "name": "Extract HubSpot IDs"
+    },
+    {
+      "parameters": {
+        "content": "## CRM Integration & Intelligent Routing",
+        "height": 704,
+        "width": 3248,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -368,
+        320
+      ],
+      "id": "eb480aa4-b43d-45b1-8756-5da62d3ba16a",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {
+    "lead-intake": [
+      {
+        "json": {
+          "source": "web_form",
+          "data": {
+            "firstName": "Test",
+            "lastName": "User",
+            "email": "invalid-email",
+            "company": "Test Corp"
+          }
+        }
+      }
+    ]
+  },
+  "connections": {
+    "lead-intake": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Validate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Email": {
+      "main": [
+        [
+          {
+            "node": "Clean Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate Email": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Mark as Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert New Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Duplicate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert New Lead": {
+      "main": [
+        [
+          {
+            "node": "Prepare for Enrichment",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Clean Data": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare for Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Clearbit Company Enrichment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Enrichment Data": {
+      "main": [
+        [
+          {
+            "node": "Emailable - Verify Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Email Validation": {
+      "main": [
+        [
+          {
+            "node": "Analyze Decision Maker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Decision Maker": {
+      "main": [
+        [
+          {
+            "node": "Detect Tech Stack Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect Tech Stack Signals": {
+      "main": [
+        [
+          {
+            "node": "Calculate Enrichment Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Enrichment Score": {
+      "main": [
+        [
+          {
+            "node": "Save Enriched Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo Company Lookup": {
+      "main": [
+        [
+          {
+            "node": "Normalize Enrichment Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clearbit Company Enrichment": {
+      "main": [
+        [
+          {
+            "node": "Normalize Enrichment Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apollo Company Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emailable - Verify Email": {
+      "main": [
+        [
+          {
+            "node": "Process Email Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Enriched Data": {
+      "main": [
+        [
+          {
+            "node": "Prepare ICP Analysis",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Enrichment Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Log Audit Trail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare ICP Analysis": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Qualify Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Qualify Lead": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Qualification": {
+      "main": [
+        [
+          {
+            "node": "Save AI Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save AI Qualification": {
+      "main": [
+        [
+          {
+            "node": "Log AI Qualification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log AI Qualification": {
+      "main": [
+        [
+          {
+            "node": "Route by Tier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Tier": {
+      "main": [
+        [
+          {
+            "node": "Get Full Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Low Priority Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Full Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Find Available Sales Rep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Available Sales Rep": {
+      "main": [
+        [
+          {
+            "node": "Filter and Sort Sales Reps",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter and Sort Sales Reps": {
+      "main": [
+        [
+          {
+            "node": "Assign Sales Rep",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Sales Rep": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Lead Assignment": {
+      "main": [
+        [
+          {
+            "node": "Increment Rep Load",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Rep Load": {
+      "main": [
+        [
+          {
+            "node": "Slack - Notify Sales Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Low Priority Lead": {
+      "main": [
+        [
+          {
+            "node": "Slack - Log C-Tier Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Contact": {
+      "main": [
+        [
+          {
+            "node": "Contact Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Exists?": {
+      "main": [
+        [
+          {
+            "node": "Update Contact",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Contact": {
+      "main": [
+        [
+          {
+            "node": "erge HubSpot Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contact": {
+      "main": [
+        [
+          {
+            "node": "erge HubSpot Contact",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "erge HubSpot Contact": {
+      "main": [
+        [
+          {
+            "node": "Create Deal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Deal": {
+      "main": [
+        [
+          {
+            "node": "Extract HubSpot IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract HubSpot IDs": {
+      "main": [
+        [
+          {
+            "node": "Update Lead Assignment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": -1,
+    "availableInMCP": false,
+    "errorWorkflow": "e3vffMx0c8HQnSts"
+  },
+  "versionId": "f97cd882-a89a-4ff4-88cc-9c93342a0eab",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2ca6a66fcbe5d1b6767a684aff880375f4cd92f84a93aa715645f63c41a858d6"
+  },
+  "id": "qTe4w92fkyFBhETw",
+  "tags": []
+}

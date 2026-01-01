@@ -92,6 +92,21 @@ Complete invoicing automation with PDF generation, client notifications, account
 
 ---
 
+### 6. [Multi-Source Prospect Discovery System](./prospect-discovery-system)
+Automated prospect research system that discovers and qualifies leads from Instagram, LinkedIn, and Google Maps with intelligent scoring.
+
+**Key Features:**
+- Multi-platform scraping (Instagram, LinkedIn, Google Maps)
+- Intelligent prospect scoring algorithm
+- Duplicate detection across sources
+- Automated Airtable sync
+- Real-time Slack notifications
+
+**Tech Stack:** n8n, Apify, Airtable, Slack  
+**Use Case:** Lead generation agencies, sales teams, outreach campaigns
+
+---
+
 ## 🛠️ Technical Skills Demonstrated
 
 ### AI & Machine Learning

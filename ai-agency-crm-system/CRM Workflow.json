@@ -1,0 +1,2823 @@
+{
+  "name": "Customer Relationship Management Final",
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -6016,
+        -496
+      ],
+      "id": "7c266db8-2a24-4477-9c21-b1fbc0042766",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "pyWUdYtdOVsmpTWD",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## LEAD CAPTURE\n\n**Purpose**: Captures leads from two sources (Gmail & Google Sheets).\nAI validates if email is a real lead, extracts company name & service needed.\nCleans and standardizes data, then creates Airtable record.\n\n**Flow**: Email/Form → AI Validation → Data Cleaning → Airtable Record\n\n**Key Outcome**: Every lead automatically enters your CRM within 1 minute.",
+        "height": 688,
+        "width": 1936,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -7152,
+        -864
+      ],
+      "id": "09e3c018-1aca-4949-aee9-b06ee204226c",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## LEAD ASSIGNMENT\n\n**Purpose**: Auto-assigns captured leads to account managers using round-robin.\nFinds manager with lowest workload, assigns lead, updates manager's load.\nSends auto-reply to lead + notification email to assigned manager.\n\n**Flow**: Lead Created → Find Active Manager → Assign → Notify Both\n\n**Key Outcome**: Lead assigned to right manager instantly. No manual work needed.        ",
+        "height": 640,
+        "width": 1952
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -7152,
+        -96
+      ],
+      "id": "59bb4812-de3a-44b1-917b-4259c23da680",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": " ## DAILY FOLLOW-UP REMINDERS\n\n**Purpose**: Every morning at 8 AM, sends managers their follow-up list.\nGroups all leads due today under each manager's name.\nOne consolidated email per manager (not spam of 5 separate emails).\n\n**Flow**: 8 AM Trigger → Find Today's Follow-ups → Group by Manager → Send Email\n\n**Key Outcome**: Leads are followed up consistently. 95%+ contact rate within 24 hours.",
+        "height": 384,
+        "width": 1888,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -5168,
+        -864
+      ],
+      "id": "440b342c-b050-473e-9a02-529001b20f32",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## PROPOSAL TRACKER\n\n**Purpose**: When lead status changes to \"Proposal Sent\", automates notifications.\nSends proposal confirmation to client, alerts finance team to prep invoice.\nMarks as processed to prevent duplicate emails.\n\n**Flow**: Status = Proposal Sent → Check if Already Triggered → Send Emails → Mark Done\n\n**Key Outcome**: Client gets excited about proposal. Finance knows to prepare invoice.",
+        "height": 400,
+        "width": 1904,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -5168,
+        -448
+      ],
+      "id": "4d316f6c-f2e6-472d-9610-0e87c39f4814",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## DEAL WON PROCESS\n\n**Purpose**: When lead status changes to \"Won\", orchestrates project handoff.\nCreates new project record, sends congratulations email, alerts project manager.\nMarks as processed to prevent duplicate project creation.\n\n**Flow**: Status = Won → Create Project → Send Congratulations → Alert PM → Mark Done\n\n**Key Outcome**: Lead becomes project instantly. Onboarding automated. No handoff delays.",
+        "height": 544,
+        "width": 1904,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -5168,
+        0
+      ],
+      "id": "37211597-e65b-41a0-9b7f-a8a5191cb38d",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -7056,
+        -640
+      ],
+      "id": "8995de05-6c66-4a1e-90c5-9b188c5120dc",
+      "name": "New Email Received",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.1",
+          "mode": "list",
+          "cachedResultName": "GPT-5.1"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.text }}"
+            },
+            {
+              "role": "system",
+              "content": "=You are an email expert for an agency that offers the following services. Social media management, graphic design, web development, brand strategy \n\nYour job is to analyze new emails to determine if the email is a new customer lead. If yes, the output should be yes. If no, the output should be no"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2,
+      "position": [
+        -6832,
+        -640
+      ],
+      "id": "1fd6a73f-bec0-46e2-afba-4ce9f4b82930",
+      "name": "Validate Lead Email",
+      "credentials": {
+        "openAiApi": {
+          "id": "pyWUdYtdOVsmpTWD",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "647e53f0-fe14-43b3-90e7-b2b84d739cfe",
+              "leftValue": "={{ $json.output[0].content[0].text }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -6480,
+        -640
+      ],
+      "id": "3fa1bb42-9f93-4e38-b601-6392c12ab120",
+      "name": "Is Valid Lead?"
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('New Email Received').item.json.id }}",
+        "labelIds": [
+          "Label_3492968367538902772"
+        ]
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -6256,
+        -640
+      ],
+      "id": "d4e48d18-e07a-43d5-958a-5ce313ea9e54",
+      "name": "Label as Lead",
+      "webhookId": "c8a67ca5-18ec-44b4-9bb9-a0028accd41e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "text": "={{ $('New Email Received').item.json.text }}",
+        "attributes": {
+          "attributes": [
+            {
+              "name": "Client Name",
+              "description": "The name of the comany"
+            },
+            {
+              "name": "Service Needed",
+              "description": "The service the client needs"
+            }
+          ]
+        },
+        "options": {
+          "systemPromptTemplate": "You are information Extractor for an agency that offers the following services. Social media management, graphic design, web development, brand strategy.\n\nYour job is to analyze new lead emails to extract information relating to Name of the client and the services needed by the client"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "position": [
+        -6032,
+        -640
+      ],
+      "id": "092a068a-e02b-4f13-bd49-ed4418ac5f63",
+      "name": "Extract Lead Data"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "7a2fcacb-3b98-4a7b-a0b8-7f57c212180d",
+              "name": "Name",
+              "value": "={{ $json.output['Client Name'] }}",
+              "type": "string"
+            },
+            {
+              "id": "0942af5a-eb5a-4b5e-867b-525371bb4f0b",
+              "name": "Services Needed",
+              "value": "={{ $json.output['Service Needed'] }}",
+              "type": "string"
+            },
+            {
+              "id": "08747ebb-a672-4a53-b8e1-5dc831968634",
+              "name": "Email",
+              "value": "={{ $('New Email Received').item.json.from.value[0].address }}",
+              "type": "string"
+            },
+            {
+              "id": "7d29039b-9084-40b8-a4b5-b9c91a534a1f",
+              "name": "date received",
+              "value": "={{ new Date($('New Email Received').item.json.headers.date).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) }}",
+              "type": "string"
+            },
+            {
+              "id": "22e77b49-3b87-4a27-88c2-cdee231992e9",
+              "name": "Message",
+              "value": "={{ $('New Email Received').item.json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "102565f9-5e56-4b16-88e7-1ab10a99e6ac",
+              "name": "Follow-up Date",
+              "value": "={{ new Date(new Date($('New Email Received').item.json.headers.date).getTime() + 3600000).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) }}",
+              "type": "string"
+            },
+            {
+              "id": "5c943027-ac47-403a-841a-8bcc9ddf13e7",
+              "name": "Lead Source",
+              "value": "Email",
+              "type": "string"
+            },
+            {
+              "id": "22d8f3de-17f8-408f-90ac-63c623ee2a81",
+              "name": "Status",
+              "value": "New",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -5680,
+        -640
+      ],
+      "id": "d920155e-e70a-485f-99b2-a20355cf8060",
+      "name": "Format for Airtable"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7qoIqxlTFfY1LM",
+          "mode": "list",
+          "cachedResultName": "Lead Capture",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tbl7qoIqxlTFfY1LM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.Name }}",
+            "Service Needed": "={{ $json['Services Needed'] }}",
+            "Email": "={{ $json.Email }}",
+            "Source": "={{ $json['Lead Source'] }}",
+            "Date Received": "={{ $json['date received'] }}",
+            "Follow-up Date": "={{ $json['Follow-up Date'] }}",
+            "Status": "={{ $json.Status }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Service Needed",
+              "displayName": "Service Needed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Date Received",
+              "displayName": "Date Received",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Follow-up Date",
+              "displayName": "Follow-up Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Contacted",
+                  "value": "Contacted"
+                },
+                {
+                  "name": "Won",
+                  "value": "Won"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -5456,
+        -640
+      ],
+      "id": "bb8aa9e6-0332-4597-848c-365652503465",
+      "name": "Create Lead Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1Jrxu61CbV09dtw52iPqQnfkLCZ4hbUf2PAKeflS7KhI",
+          "mode": "list",
+          "cachedResultName": "Brands Avenue Digital",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Jrxu61CbV09dtw52iPqQnfkLCZ4hbUf2PAKeflS7KhI/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1532405585,
+          "mode": "list",
+          "cachedResultName": "Leads Capture",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Jrxu61CbV09dtw52iPqQnfkLCZ4hbUf2PAKeflS7KhI/edit#gid=1532405585"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -7072,
+        -368
+      ],
+      "id": "c02c640a-b792-4e76-be2a-93c196251df4",
+      "name": "New Row Added",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "RarU0L6lk04vgvoF",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "978474b6-4ea4-4d32-b2a9-e14ad9fd5bc8",
+              "name": "Name",
+              "value": "={{ $json.Name }}",
+              "type": "string"
+            },
+            {
+              "id": "186431ec-eda8-4334-a15b-3576307ae3d6",
+              "name": "Phone",
+              "value": "={{ $json.Phone }}",
+              "type": "string"
+            },
+            {
+              "id": "97a633aa-e9ea-4b22-b17e-fdd12e4aa9a4",
+              "name": "Email",
+              "value": "={{ $json.Email }}",
+              "type": "string"
+            },
+            {
+              "id": "fdef1c71-5ec8-47f7-911b-f3a0939045df",
+              "name": "Source",
+              "value": "={{ $json.Source }}",
+              "type": "string"
+            },
+            {
+              "id": "2d803602-2f71-446e-be8e-9568f4d286eb",
+              "name": "Service Interested",
+              "value": "={{ $json['Service Interested'] }}",
+              "type": "string"
+            },
+            {
+              "id": "33b44fc5-0886-4408-a1c3-8095e309c42c",
+              "name": "Message",
+              "value": "={{ $json.Message }}",
+              "type": "string"
+            },
+            {
+              "id": "109d8328-50f6-4d4c-951e-d85eb6ff620e",
+              "name": "Lead Status",
+              "value": "={{ $json['Lead Status'] }}",
+              "type": "string"
+            },
+            {
+              "id": "a1145145-69ed-4855-a7b4-a39e64af80d5",
+              "name": "Date Received",
+              "value": "={{ $json.Timestamp }}",
+              "type": "string"
+            },
+            {
+              "id": "89eb237d-06e1-414f-801c-1d68759180ed",
+              "name": "Follow-up Date",
+              "value": "={{ new Date(new Date($json.Timestamp).getTime() + 3600000).toLocaleString(\"en-US\", {\n    month: \"2-digit\",\n    day: \"2-digit\",\n    year: \"numeric\",\n    hour: \"2-digit\",\n    minute: \"2-digit\",\n    second: \"2-digit\",\n    hour12: false\n}) }}\n\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -6832,
+        -368
+      ],
+      "id": "3865750b-9d83-4806-8e82-14cf46ceae84",
+      "name": "Format Sheets Data"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7qoIqxlTFfY1LM",
+          "mode": "list",
+          "cachedResultName": "Lead Capture",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tbl7qoIqxlTFfY1LM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Name": "={{ $json.Name }}",
+            "Service Needed": "={{ $json['Service Interested'] }}",
+            "Email": "={{ $json.Email }}",
+            "Source": "={{ $json.Source }}",
+            "Date Received": "={{ $json['Date Received'] }}",
+            "Follow-up Date": "={{ $json['Follow-up Date'] }}",
+            "Status": "={{ $json['Lead Status'] }}",
+            "Phone number": "={{ $json.Phone }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Lead Order",
+              "displayName": "Lead Order",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Service Needed",
+              "displayName": "Service Needed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Date Received",
+              "displayName": "Date Received",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Follow-up Date",
+              "displayName": "Follow-up Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Contacted",
+                  "value": "Contacted"
+                },
+                {
+                  "name": "Won",
+                  "value": "Won"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -6608,
+        -368
+      ],
+      "id": "799bef23-bdfd-4195-af1e-ec41106c8a12",
+      "name": "Create Lead from Sheets",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "airtableTokenApi",
+        "baseId": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "id"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "tbl7qoIqxlTFfY1LM",
+          "mode": "id"
+        },
+        "triggerField": "Lead Order",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.airtableTrigger",
+      "typeVersion": 1,
+      "position": [
+        -6928,
+        288
+      ],
+      "id": "bbfaa360-ef19-4419-a49d-7637725256e2",
+      "name": "Lead Order Created",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblBp5K7vzCzjVaYL",
+          "mode": "list",
+          "cachedResultName": "Account Managers",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblBp5K7vzCzjVaYL"
+        },
+        "filterByFormula": "{Active} = \"Active\"",
+        "returnAll": false,
+        "limit": 1,
+        "options": {},
+        "sort": {
+          "property": [
+            {
+              "field": "Current Load"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -6704,
+        288
+      ],
+      "id": "d3d1cc1d-b209-49ab-9f27-a32f348fe168",
+      "name": "Get Active Managers",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl7qoIqxlTFfY1LM",
+          "mode": "list",
+          "cachedResultName": "Lead Capture",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tbl7qoIqxlTFfY1LM"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Account Manager": "={{ $json['Account Manager'] }}",
+            "id": "={{ $('Lead Order Created').item.json.id }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Lead Order",
+              "displayName": "Lead Order",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": true
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Service Needed",
+              "displayName": "Service Needed",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Date Received",
+              "displayName": "Date Received",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Follow-up Date",
+              "displayName": "Follow-up Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Contacted",
+                  "value": "Contacted"
+                },
+                {
+                  "name": "Won",
+                  "value": "Won"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phone number",
+              "displayName": "Phone number",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Account Manager",
+              "displayName": "Account Manager",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -6480,
+        288
+      ],
+      "id": "2ea255d4-30a5-4a7d-81fc-b72c5d351598",
+      "name": "Assign Manager to Lead",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblBp5K7vzCzjVaYL",
+          "mode": "list",
+          "cachedResultName": "Account Managers",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblBp5K7vzCzjVaYL"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Get Active Managers').item.json.id }}",
+            "Active": "Inactive",
+            "Current Load": "={{ $('Get Active Managers').item.json['Current Load'] + 1 }}\n"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Account Manager",
+              "displayName": "Account Manager",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Active",
+              "displayName": "Active",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Active",
+                  "value": "Active"
+                },
+                {
+                  "name": "Inactive",
+                  "value": "Inactive"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Current Load",
+              "displayName": "Current Load",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -6256,
+        288
+      ],
+      "id": "e73a8d2c-bd8f-4cd7-a695-e9f329b7981e",
+      "name": "Update Manager Status",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Lead Order Created').item.json.fields.Email }}",
+        "subject": "=We received your inquiry - Brands Avenue Digital",
+        "message": "=<h2>Hi {{ $('Lead Order Created').item.json.fields.Name }},</h2>\n\n<p>Thank you for reaching out to Brands Avenue Digital!</p>\n<p>We received your inquiry about <strong>{{ $('Lead Order Created').item.json.fields['Service Needed'] }}</strong> services.</p>\n\n<p><strong>Next Steps:</strong></p>\n<ul>\n  <li>Our team member <strong>{{ $json.fields['Account Manager'] }}</strong> will review your details</li>\n  <li>You'll receive a call or message within <strong>24 hours</strong></li>\n  <li>We'll discuss your project needs and provide a custom quote</li>\n</ul>\n\n\n<p>If you have any urgent questions, feel free to reach out directly.</p>\n\n<p>Best regards,<br>\n<strong>Brands Avenue Digital Team</strong><br>\nLagos, Nigeria</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -6032,
+        192
+      ],
+      "id": "504fc454-e122-48b0-9375-235e12c56d3f",
+      "name": "Auto-Reply to Lead",
+      "webhookId": "c5cdceec-7875-4ac5-a571-f9ac12371023",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.fields.Email }}",
+        "subject": "=New Lead Assigned:{{ $('Lead Order Created').item.json.fields.Name }}",
+        "message": "=<p><strong>{{ $('Lead Order Created').item.json.fields.Name }}</strong> just submitted a lead form.</p>\n\n<table style=\"border-collapse: collapse; width: 100%;\">\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Contact:</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $('Lead Order Created').item.json.fields.Name }}</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Phone:</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $('Lead Order Created').item.json.fields['Phone number'] }}</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Email:</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $('Lead Order Created').item.json.fields.Email }}</td>\n  </tr>\n  <tr>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\"><strong>Service:</strong></td>\n    <td style=\"border: 1px solid #ddd; padding: 8px;\">{{ $('Lead Order Created').item.json.fields['Service Needed'] }}</td>\n  </tr>\n</table>\n\n<p><strong>ACTION REQUIRED:</strong> Contact within 24 hours!</p>\n<p><a href=\"https://airtable.com/app1Bq7PpPmCrHRlI/shrrj7mhV9K14tDGa\">View in Airtable</a></p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -6032,
+        384
+      ],
+      "id": "6c037a42-015f-4314-95f7-23b9d11b91c3",
+      "name": "Notify Assigned Manager",
+      "webhookId": "f5b0b221-6663-47a2-bff1-f26eb7c6450e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -4880,
+        -656
+      ],
+      "id": "9bd75605-3892-4e5e-add4-4579988cc4c7",
+      "name": "8 AM Daily Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblrHux0H3flm8g8w",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblrHux0H3flm8g8w"
+        },
+        "filterByFormula": "{Follow-up Date} <= TODAY()",
+        "returnAll": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -4656,
+        -656
+      ],
+      "id": "8dbc492e-7224-4477-b269-e5a9557f3e2b",
+      "name": "Search Today's Follow-ups",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblBp5K7vzCzjVaYL",
+          "mode": "list",
+          "cachedResultName": "Account Managers",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblBp5K7vzCzjVaYL"
+        },
+        "filterByFormula": "={Account Manager} = \"{{ $json['Assigned To'] }}\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -4432,
+        -656
+      ],
+      "id": "514ad0b2-07c4-4776-af15-f19cdbfddda2",
+      "name": "Get Manager Contact Info",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get all items from the current execution\nconst items = $input.all();\n\n// Group leads by account manager email\nconst leadsByManager = {};\n\nfor (let i = 0; i < items.length; i++) {\n  const currentItem = items[i];\n  const managerEmail = currentItem.json.Email;\n  const managerName = currentItem.json['Account Manager'];\n  \n  // Get the corresponding lead data from the Follow-up node\n  const leadData = $('Search Today's Follow-ups').all()[i].json;\n  \n  if (!leadsByManager[managerEmail]) {\n    leadsByManager[managerEmail] = {\n      email: managerEmail,\n      managerName: managerName,\n      leads: []\n    };\n  }\n  \n  leadsByManager[managerEmail].leads.push({\n    name: leadData.Name || 'N/A',\n    budget: leadData['Budget Range'] || 'N/A',\n    lastContact: leadData['Last Contact'] || 'N/A',\n    notes: leadData.Notes || 'N/A'\n  });\n}\n\n// Convert to array for output\nreturn Object.values(leadsByManager).map(manager => ({\n  json: manager\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4208,
+        -656
+      ],
+      "id": "d15507e4-02fc-42b6-85c7-3c81812674ef",
+      "name": "Group Leads by Manager"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Follow-up Reminders for Today",
+        "emailType": "text",
+        "message": "=Hi {{ $json.managerName }},\n\nYou have {{ $json.leads.length }} follow-up(s) scheduled for today:\n\n{{ $json.leads.map((lead, index) => \n  `${index + 1}. ${lead.name} (${lead.budget} budget)\n   Last Contact: ${lead.lastContact}\n   Notes: ${lead.notes}\n   ---`\n).join('\\n\\n') }}\n\nBest regards\n",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3984,
+        -656
+      ],
+      "id": "9fc8d7c5-2537-444d-be25-d85ba156e64b",
+      "name": "Send Follow-up Reminder",
+      "webhookId": "ea044479-bacc-4bf5-8da2-dbff54030e50",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -4848,
+        -192
+      ],
+      "id": "869316db-4a3e-4f5d-96bd-ee2c94eb6012",
+      "name": "Hourly Check"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblrHux0H3flm8g8w",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblrHux0H3flm8g8w"
+        },
+        "filterByFormula": "Status = \"Proposal Sent\"",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -4624,
+        -192
+      ],
+      "id": "a0cfab25-b180-43a3-b062-08efc8b06692",
+      "name": "Search Proposals Sent",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "6a53de1e-d142-4a5d-a973-b0e5aa82569e",
+              "leftValue": "={{ $json['Proposal Workflow Triggered'] }}",
+              "rightValue": "False",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -4400,
+        -192
+      ],
+      "id": "447d1251-7c99-4bc8-af68-58218dbf0b81",
+      "name": "Conditional: Has Workflow Triggered?"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.Email }}",
+        "subject": "=Proposal Received - ₦{{ $json['Proposal Amount'] }}",
+        "emailType": "text",
+        "message": "=Hi {{ $json.Name }},\n\nThank you for your interest! We've prepared a proposal for ₦{{ $json['Proposal Amount'] }}.\n\nProposal Details:\n- Amount: ₦{{ $json['Proposal Amount'] }}\n- Date Sent: {{ $json['Follow-up Date'] }}\n- Expected Closing: {{ $json['Expected Close Date'] }}\n\nWe'll follow up with you in the next few days. If you have any questions, feel free to reach out!\n\nBest regards,\n{{ $json['Assigned To'] }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -4176,
+        -192
+      ],
+      "id": "672ce8b6-401c-418a-bf43-ec633d7601ee",
+      "name": "Send Proposal to Client",
+      "webhookId": "a159bc06-3746-4e21-a853-288877b5131f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "finance@yourcompany.com",
+        "subject": "New Proposal Sent - Invoice Prep Required",
+        "emailType": "text",
+        "message": "=Hi Finance Team,\n\nA new proposal has been sent. Please prepare for potential invoice processing.\n\nLead Details:\n- Name: {{ $('Conditional: Has Workflow Triggered?').item.json.Name }}\n- Email: {{ $('Conditional: Has Workflow Triggered?').item.json.Email }}\n- Phone: {{ $('Conditional: Has Workflow Triggered?').item.json.Phone }}\n- Proposal Amount: ₦{{ $('Conditional: Has Workflow Triggered?').item.json['Proposal Amount'] }}\n- Expected Close Date: {{ $('Conditional: Has Workflow Triggered?').item.json['Expected Close Date'] }}\n- Probability: {{ $('Conditional: Has Workflow Triggered?').item.json['Probability (%)'] }}\n\nAirtable Record: https://airtable.com/app1Bq7PpPmCrHRlI/shrrj7mhV9K14tDGa {{ $('Conditional: Has Workflow Triggered?').item.json.id }}\n\nThanks!",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3952,
+        -192
+      ],
+      "id": "63bf9831-4090-481e-9a0a-5e576bc8a52d",
+      "name": "Alert Finance Team",
+      "webhookId": "f0ab3aaf-c7d7-45c6-9c38-f59123d0bf36",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblrHux0H3flm8g8w",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblrHux0H3flm8g8w"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Search Proposals Sent').item.json.id }}",
+            "Proposal Workflow Triggered": "True"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn",
+              "displayName": "LinkedIn",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Service Interested",
+              "displayName": "Service Interested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Budget Range",
+              "displayName": "Budget Range",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Timeline",
+              "displayName": "Timeline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Specific Needs",
+              "displayName": "Specific Needs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Contacted",
+                  "value": "Contacted"
+                },
+                {
+                  "name": "Qualified",
+                  "value": "Qualified"
+                },
+                {
+                  "name": "Proposal Sent",
+                  "value": "Proposal Sent"
+                },
+                {
+                  "name": "Won",
+                  "value": "Won"
+                },
+                {
+                  "name": "Lost",
+                  "value": "Lost"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Lead Score",
+              "displayName": "Lead Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Assigned To",
+              "displayName": "Assigned To",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Date Assigned",
+              "displayName": "Date Assigned",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "First Contact Date",
+              "displayName": "First Contact Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Follow-up Date",
+              "displayName": "Follow-up Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Last Contact",
+              "displayName": "Last Contact",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Contact Count",
+              "displayName": "Contact Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Proposal Amount",
+              "displayName": "Proposal Amount",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Expected Close Date",
+              "displayName": "Expected Close Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Probability (%)",
+              "displayName": "Probability (%)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Service Line",
+              "displayName": "Service Line",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Proposal Workflow Triggered",
+              "displayName": "Proposal Workflow Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "True",
+                  "value": "True"
+                },
+                {
+                  "name": "False",
+                  "value": "False"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -3728,
+        -192
+      ],
+      "id": "7e1f74a4-0019-45fd-aeee-29794c9dbbed",
+      "name": "Mark Proposal Triggered",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -4976,
+        304
+      ],
+      "id": "db15044c-ccea-4b36-bd99-769bc9ca18ae",
+      "name": "Hourly Check1"
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblrHux0H3flm8g8w",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblrHux0H3flm8g8w"
+        },
+        "filterByFormula": "Status = 'Won'",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -4752,
+        304
+      ],
+      "id": "20b00f03-ff6e-4853-8c3f-751bd0ed16fe",
+      "name": "Search Won Deals",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4d749847-9c06-42b7-af43-eebf6a5e6a07",
+              "leftValue": "={{ $json['Proposal Won Triggered'] }}",
+              "rightValue": "False",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -4528,
+        304
+      ],
+      "id": "e9ccfd59-d034-4b2b-ada7-9c2424ab7654",
+      "name": "Has Workflow Triggered?1"
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblQjbTAC1yDTcL9M",
+          "mode": "list",
+          "cachedResultName": "Projects",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblQjbTAC1yDTcL9M"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Budget": "={{ $json['Actual Deal Value'] }}",
+            "Project Name": "={{ $json.Name }}",
+            "Client": "={{ $json.Name }}",
+            "Service": "={{ $json['Service Interested'] }}",
+            "Duration": "={{ $json.Duration }}",
+            "Status": "Active"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Project Name",
+              "displayName": "Project Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Client",
+              "displayName": "Client",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Service",
+              "displayName": "Service",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Start Date",
+              "displayName": "Start Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Duration",
+              "displayName": "Duration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Budget",
+              "displayName": "Budget",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "Active",
+                  "value": "Active"
+                },
+                {
+                  "name": "Completed",
+                  "value": "Completed"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -4304,
+        304
+      ],
+      "id": "20a8e80a-be10-4094-a144-9ac18606434d",
+      "name": "Create Project Record",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Has Workflow Triggered?1').item.json.Email }}",
+        "subject": "=🎉 Welcome Aboard,{{ $('Has Workflow Triggered?1').item.json.Name }} !",
+        "emailType": "text",
+        "message": "=Hi{{ $json.fields.Client }} ,\n\n🎉 Congratulations! We're thrilled to officially welcome TechStart Nigeria to our agency family!\n\n\nWhat Happens Next?\n1. Our Project Manager will reach out within 24 hours\n2. You'll meet your dedicated team \n3. We'll schedule a kickoff call to align on goals\n\nIf you have any questions before we begin, feel free to reach out.\n\nLooking forward to an amazing partnership!\n\nBest regards,\n{{ $('Has Workflow Triggered?1').item.json['Assigned To'] }} & The Team",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -4080,
+        304
+      ],
+      "id": "3bc09904-3a2b-40d5-ac86-7c835f52d3d9",
+      "name": "Send Congratulations",
+      "webhookId": "1c4d085e-be9d-4994-853f-ab2e2b9a20d4",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "projectmanager@yourcompany.com",
+        "subject": "=🚀 New Project Alert: {{ $('Has Workflow Triggered?1').item.json.Name }}",
+        "emailType": "text",
+        "message": "=Hi,\n\nGreat news! We just closed a new deal and it's ready for project kickoff.\n\nClient Details:\n- Company: {{ $('Has Workflow Triggered?1').item.json.Name }} \n- Contact Email: {{ $('Has Workflow Triggered?1').item.json.Email }}\n- Contact Phone: {{ $('Has Workflow Triggered?1').item.json.Phone }}\n\nProject Overview:\n- Package: {{ $('Has Workflow Triggered?1').item.json['Specific Needs'] }}\n- Budget: ₦{{ $('Has Workflow Triggered?1').item.json['Actual Deal Value'] }}\n- Start Date: {{ $('Has Workflow Triggered?1').item.json['Closed Date'] }}\n- Duration: {{ $('Has Workflow Triggered?1').item.json.Duration }}\n\nAction Items:\n✅ Review project details in Airtable\n✅ Schedule kickoff call with client within 24 hours\n✅ Brief the team \n✅ Set up project tracking tools\n\nThe project has been created in Airtable. Please reach out to the client to schedule the kickoff meeting.\n\nAirtable Lead Record: https://airtable.com/app1Bq7PpPmCrHRlI/shrrj7mhV9K14tDGa\n\nLet's make this project a success!\n\nBest,\n{{ $('Has Workflow Triggered?1').item.json['Assigned To'] }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -3856,
+        304
+      ],
+      "id": "a4cf4bbb-d2bb-4361-98be-ceb0c149f60c",
+      "name": "Alert Project Manager",
+      "webhookId": "13f78c9f-44fe-4463-a27d-533bf446b298",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "S6CN8JQt3vphDahI",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "app1Bq7PpPmCrHRlI",
+          "mode": "list",
+          "cachedResultName": "CRM",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tblrHux0H3flm8g8w",
+          "mode": "list",
+          "cachedResultName": "Lead Qualification",
+          "cachedResultUrl": "https://airtable.com/app1Bq7PpPmCrHRlI/tblrHux0H3flm8g8w"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "id": "={{ $('Has Workflow Triggered?1').item.json.id }}",
+            "Proposal Won Triggered": "True"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": true,
+              "removed": false
+            },
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Phone",
+              "displayName": "Phone",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn",
+              "displayName": "LinkedIn",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Service Interested",
+              "displayName": "Service Interested",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Budget Range",
+              "displayName": "Budget Range",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Timeline",
+              "displayName": "Timeline",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Specific Needs",
+              "displayName": "Specific Needs",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "New",
+                  "value": "New"
+                },
+                {
+                  "name": "Contacted",
+                  "value": "Contacted"
+                },
+                {
+                  "name": "Qualified",
+                  "value": "Qualified"
+                },
+                {
+                  "name": "Proposal Sent",
+                  "value": "Proposal Sent"
+                },
+                {
+                  "name": "Won",
+                  "value": "Won"
+                },
+                {
+                  "name": "Lost",
+                  "value": "Lost"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Lead Score",
+              "displayName": "Lead Score",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Assigned To",
+              "displayName": "Assigned To",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Date Assigned",
+              "displayName": "Date Assigned",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "First Contact Date",
+              "displayName": "First Contact Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Follow-up Date",
+              "displayName": "Follow-up Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Last Contact",
+              "displayName": "Last Contact",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Contact Count",
+              "displayName": "Contact Count",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Notes",
+              "displayName": "Notes",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Proposal Amount",
+              "displayName": "Proposal Amount",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Expected Close Date",
+              "displayName": "Expected Close Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Probability (%)",
+              "displayName": "Probability (%)",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Service Line",
+              "displayName": "Service Line",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Proposal Workflow Triggered",
+              "displayName": "Proposal Workflow Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "True",
+                  "value": "True"
+                },
+                {
+                  "name": "False",
+                  "value": "False"
+                }
+              ],
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Proposal Won Triggered",
+              "displayName": "Proposal Won Triggered",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "options",
+              "options": [
+                {
+                  "name": "True",
+                  "value": "True"
+                },
+                {
+                  "name": "False",
+                  "value": "False"
+                }
+              ],
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "Closed Date",
+              "displayName": "Closed Date",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Actual Deal Value",
+              "displayName": "Actual Deal Value",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "number",
+              "readOnly": false,
+              "removed": true
+            },
+            {
+              "id": "Duration",
+              "displayName": "Duration",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2.1,
+      "position": [
+        -3632,
+        304
+      ],
+      "id": "980135c8-9ed3-4775-9612-0892cd7a8d63",
+      "name": "Mark Won Workflow Triggered",
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "nEQKEAhEfrP3gUIY",
+          "name": "Airtable Personal Access Token account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Extract Lead Data",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Email Received": {
+      "main": [
+        [
+          {
+            "node": "Validate Lead Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Lead Email": {
+      "main": [
+        [
+          {
+            "node": "Is Valid Lead?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid Lead?": {
+      "main": [
+        [
+          {
+            "node": "Label as Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Label as Lead": {
+      "main": [
+        [
+          {
+            "node": "Extract Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Format for Airtable",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for Airtable": {
+      "main": [
+        [
+          {
+            "node": "Create Lead Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Lead Record": {
+      "main": [
+        []
+      ]
+    },
+    "New Row Added": {
+      "main": [
+        [
+          {
+            "node": "Format Sheets Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Sheets Data": {
+      "main": [
+        [
+          {
+            "node": "Create Lead from Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lead Order Created": {
+      "main": [
+        [
+          {
+            "node": "Get Active Managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Active Managers": {
+      "main": [
+        [
+          {
+            "node": "Assign Manager to Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Manager to Lead": {
+      "main": [
+        [
+          {
+            "node": "Update Manager Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Manager Status": {
+      "main": [
+        [
+          {
+            "node": "Auto-Reply to Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Assigned Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Auto-Reply to Lead": {
+      "main": [
+        []
+      ]
+    },
+    "8 AM Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Search Today's Follow-ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Today's Follow-ups": {
+      "main": [
+        [
+          {
+            "node": "Get Manager Contact Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Manager Contact Info": {
+      "main": [
+        [
+          {
+            "node": "Group Leads by Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Leads by Manager": {
+      "main": [
+        [
+          {
+            "node": "Send Follow-up Reminder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly Check": {
+      "main": [
+        [
+          {
+            "node": "Search Proposals Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Proposals Sent": {
+      "main": [
+        [
+          {
+            "node": "Conditional: Has Workflow Triggered?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conditional: Has Workflow Triggered?": {
+      "main": [
+        [
+          {
+            "node": "Send Proposal to Client",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Proposal to Client": {
+      "main": [
+        [
+          {
+            "node": "Alert Finance Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Finance Team": {
+      "main": [
+        [
+          {
+            "node": "Mark Proposal Triggered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly Check1": {
+      "main": [
+        [
+          {
+            "node": "Search Won Deals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Won Deals": {
+      "main": [
+        [
+          {
+            "node": "Has Workflow Triggered?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Workflow Triggered?1": {
+      "main": [
+        [
+          {
+            "node": "Create Project Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Project Record": {
+      "main": [
+        [
+          {
+            "node": "Send Congratulations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Congratulations": {
+      "main": [
+        [
+          {
+            "node": "Alert Project Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Project Manager": {
+      "main": [
+        [
+          {
+            "node": "Mark Won Workflow Triggered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Assigned Manager": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "versionId": "0c7aee37-8f03-47a0-a9d9-1e6ccbcfa286",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ff731402e9dae71e3f576cb7d6197c8ebbfe9312cebe8a2cc2e3a6399da38952"
+  },
+  "id": "GYbOTvYVfXW8ocWE",
+  "tags": []
+}

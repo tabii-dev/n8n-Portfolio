@@ -1,0 +1,977 @@
+{
+  "name": "Lead Research & Qualification - Phase 1",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-2544, 304],
+      "id": "21ed094b-8c2b-4605-a619-64f183011dda",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/mixed_people/api_search",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "YOUR_APOLLO_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"page\": {{ $('Get Current Page Number').item.json.Value }},\n  \"per_page\": 100,\n  \"person_titles\": [\"CEO\", \"Founder\", \"Owner\", \"Managing Director\", \"Operations Manager\", \"Commercial Director\"],\n  \"organization_num_employees_ranges\": [\"5,10\", \"11,20\", \"21,50\"],\n  \"organization_locations\": [\"Europe\"],\n  \"organization_not_locations\": [],\n  \"person_not_titles\": [\"Junior\", \"Assistant\", \"Intern\", \"Coordinator\", \"HR\"],\n  \"q_organization_domains\": \"\",\n  \"organization_industry_tag_ids\": [],\n  \"contact_email_status\": [\"verified\"],\n  \"prospected_by_current_team\": [\"no\"]\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-2032, 224],
+      "id": "6d694990-8da7-4129-b4f9-346bbc115dfc",
+      "name": "Apollo - Search Decision Makers",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "people",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [-1808, 224],
+      "id": "5a7fd707-a513-4e27-b4b1-8cfe0d8c301d",
+      "name": "Split People Array"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/people/match",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "reveal_personal_emails",
+              "value": "false"
+            },
+            {
+              "name": "reveal_phone_number",
+              "value": "false"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            },
+            {
+              "name": "accept",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "YOUR_APOLLO_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "reveal_personal_emails",
+              "value": "true"
+            },
+            {
+              "name": "reveal_phone_number",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-1584, 224],
+      "id": "df2f66db-a4b5-4991-b87d-7a896c295f1c",
+      "name": "Apollo - Enrich Person Details",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## LEAD SOURCING AND ENRICHMENT FROM APOLLO",
+        "height": 432,
+        "width": 1952
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-2576, 32],
+      "id": "eab51a7a-35cd-49c6-8b47-ea15dbff8a55",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Access ALL input items\nconst items = $input.all();\nconst results = [];\n\n// Process each lead\nfor (const item of items) {\n  // Safety check: skip if no valid data\n  if (!item.json || (!item.json.person && !item.json.organization)) {\n    console.log('⚠️ Skipping invalid item:', item);\n    continue;\n  }\n  \n  // Apollo wraps data in a \"person\" object\n  const lead = item.json.person || item.json;\n  const org = lead.organization || {};\n  \n  // Get tech stack as comma-separated string\n  const techStack = org.technology_names?.join(', ') || 'Not detected';\n  \n  // Get top keywords\n  const topKeywords = org.keywords?.slice(0, 10).join(', ') || 'Not available';\n  \n  // Format the complete enriched data\n  const enrichedData = {\n    // Field 1: Company name\n    company_name: org.name || '',\n    \n    // Field 2: Company website\n    company_website: org.website_url || '',\n    \n    // Field 3: Industry / niche\n    industry: org.industry || '',\n    \n    // Field 4: Number of employees\n    num_employees: org.estimated_num_employees || '',\n    \n    // Field 5: Country\n    country: lead.country || org.country || '',\n    \n    // Field 6: Contact person full name\n    contact_name: `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),\n    \n    // Field 7: Job title\n    job_title: lead.title || '',\n    \n    // Field 8: Business email (verified)\n    business_email: lead.email || '',\n    \n    // Field 9: LinkedIn profile URL (personal)\n    linkedin_profile: lead.linkedin_url || '',\n    \n    // Field 10: LinkedIn company page URL\n    linkedin_company: org.linkedin_url || '',\n    \n    // Field 11: Tools/software used\n    tools_software: techStack,\n    \n    // Field 12: Short note - we'll generate with AI next\n    short_note: '[TO BE GENERATED BY AI]',\n    \n    // ENRICHMENT FIELDS (Stage 5)\n    company_description: org.short_description || '',\n    founded_year: org.founded_year || '',\n    company_phone: org.phone || '',\n    top_keywords: topKeywords,\n    seniority: lead.seniority || '',\n    \n    // Internal tracking\n    date_added: new Date().toISOString(),\n    apollo_id: lead.id || '',\n    email_status: lead.email_status || 'unknown'\n  };\n  \n  results.push({ json: enrichedData });\n}\n\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-544, 208],
+      "id": "0398b275-1947-4c34-b8b2-f9ff386674a9",
+      "name": "Extract 12 Required Fields"
+    },
+    {
+      "parameters": {
+        "content": "## DATA NORMALIZATION ",
+        "height": 368,
+        "width": 496,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-592, 16],
+      "id": "7bb864e6-c221-4de0-800c-81c32be196c9",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## AI-POWERED QUALIFICATION & SCORING",
+        "height": 368,
+        "width": 672,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "bba7b392-eade-4be3-bc75-ad08b4c20623",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are a B2B lead qualification expert specializing in business automation and AI solutions for European SMBs (5-50 employees). Your job is to analyze companies and determine their automation potential.\n\nOutput ONLY valid JSON with this exact structure:\n{\n  \"short_note\": \"One sentence (max 60 words) explaining why this company is a good fit for automation/AI\",\n  \"qualification_score\": \"High\" or \"Medium\" or \"Low\",\n  \"score_reasoning\": \"Brief reason for the score\"\n}\n"
+            },
+            {
+              "content": "=Analyze this lead:\n\nCompany: {{ $json.company_name }}\nIndustry: {{ $json.industry }}\nEmployees: {{ $json.num_employees }}\nTech Stack: {{ $json.tools_software }}\nDescription: {{ $json.company_description }}\nTop Keywords: {{ $json.top_keywords }}\nDecision Maker: {{ $json.contact_name }},{{ $json.job_title }} , {{ $json.seniority }}\nDetermine if this is High/Medium/Low fit for automation and AI services. Consider:\n- Manual processes that could be automated\n- Tech stack gaps (missing CRM, automation tools)\n- Growth stage (5-50 employees = prime for automation)\n- Industry automation potential\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [48, 176],
+      "id": "996aaf9a-48ae-42e2-853c-ba63bd729eb8",
+      "name": "AI - Generate Short Note & Score",
+      "executeOnce": false,
+      "alwaysOutputData": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [368, 176],
+      "id": "7b8373e4-75b1-40c2-9535-0c731c5b53d9",
+      "name": "Merge Lead Data + AI Scores"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const leadData = item.json;\n  \n  // The AI node returns output in different structures depending on version\n  let aiOutput;\n  \n  // Try multiple possible locations for AI response\n  if (leadData.output && Array.isArray(leadData.output)) {\n    // Structure 1: output[0].content[0].text (chat completion format)\n    if (leadData.output[0]?.content?.[0]?.text) {\n      aiOutput = leadData.output[0].content[0].text;\n    }\n    // Structure 2: output[0].text (simple format)\n    else if (leadData.output[0]?.text) {\n      aiOutput = leadData.output[0].text;\n    }\n    // Structure 3: output[0] is string\n    else if (typeof leadData.output[0] === 'string') {\n      aiOutput = leadData.output[0];\n    }\n  }\n  // Structure 4: Direct text field\n  else if (leadData.text) {\n    aiOutput = leadData.text;\n  }\n  // Structure 5: Direct message field\n  else if (leadData.message) {\n    aiOutput = leadData.message;\n  }\n  \n  // If still no output found, log and use fallback\n  if (!aiOutput) {\n    console.log(`⚠️ Could not find AI output for ${leadData.company_name}`);\n    console.log('Available keys:', Object.keys(leadData));\n    console.log('Full data sample:', JSON.stringify(leadData).substring(0, 500));\n    \n    // Build final lead with fallback AI data\n    const finalLead = {\n      company_name: leadData.company_name,\n      company_website: leadData.company_website,\n      industry: leadData.industry,\n      num_employees: leadData.num_employees,\n      country: leadData.country,\n      contact_name: leadData.contact_name,\n      job_title: leadData.job_title,\n      business_email: leadData.business_email,\n      linkedin_profile: leadData.linkedin_profile,\n      linkedin_company: leadData.linkedin_company,\n      short_note: \"This SMB is in the ideal growth stage (5-50 employees) and would benefit from automation solutions to streamline operations and enhance efficiency.\",\n      qualification_score: \"Medium\",\n      score_reasoning: \"Manual review required - AI response format not detected\"\n    };\n    \n    results.push({ json: finalLead });\n    continue;\n  }\n  \n  // Enhanced JSON cleaning\n  let cleanJson = aiOutput\n    .replace(/```json\\n?/gi, '')\n    .replace(/```\\n?/g, '')\n    .replace(/^[^{]*/g, '')  // Remove text before first {\n    .replace(/[^}]*$/g, '')  // Remove text after last }\n    .trim();\n  \n  // Parse and validate AI response\n  let aiData;\n  try {\n    aiData = JSON.parse(cleanJson);\n    \n    // Validate all required fields exist and are non-empty\n    if (!aiData.short_note || aiData.short_note.trim() === '') {\n      throw new Error('Missing or empty short_note');\n    }\n    if (!aiData.qualification_score || !['High', 'Medium', 'Low'].includes(aiData.qualification_score)) {\n      throw new Error(`Invalid qualification_score: ${aiData.qualification_score}`);\n    }\n    if (!aiData.score_reasoning || aiData.score_reasoning.trim() === '') {\n      throw new Error('Missing or empty score_reasoning');\n    }\n    \n  } catch (e) {\n    console.log(`⚠️ JSON parsing failed for ${leadData.company_name}: ${e.message}`);\n    console.log(`Raw AI output (first 300 chars): ${aiOutput.substring(0, 300)}`);\n    \n    // Attempt to extract data with regex as fallback\n    const shortNoteMatch = aiOutput.match(/\"short_note\"\\s*:\\s*\"([^\"]+)\"/);\n    const scoreMatch = aiOutput.match(/\"qualification_score\"\\s*:\\s*\"(High|Medium|Low)\"/i);\n    const reasoningMatch = aiOutput.match(/\"score_reasoning\"\\s*:\\s*\"([^\"]+)\"/);\n    \n    if (shortNoteMatch && scoreMatch && reasoningMatch) {\n      console.log(`✅ Recovered data using regex for ${leadData.company_name}`);\n      aiData = {\n        short_note: shortNoteMatch[1],\n        qualification_score: scoreMatch[1],\n        score_reasoning: reasoningMatch[1]\n      };\n    } else {\n      // Ultimate fallback\n      aiData = {\n        short_note: \"This European SMB with 5-50 employees is in a prime growth stage where automation and AI solutions can streamline operations, reduce manual tasks, and drive efficiency gains.\",\n        qualification_score: \"Medium\",\n        score_reasoning: \"Automatic qualification based on company size and industry fit (AI parsing failed)\"\n      };\n    }\n  }\n  \n  // Build final lead object\n  const finalLead = {\n    company_name: leadData.company_name,\n    company_website: leadData.company_website,\n    industry: leadData.industry,\n    num_employees: leadData.num_employees,\n    country: leadData.country,\n    contact_name: leadData.contact_name,\n    job_title: leadData.job_title,\n    business_email: leadData.business_email,\n    linkedin_profile: leadData.linkedin_profile,\n    linkedin_company: leadData.linkedin_company,\n    short_note: aiData.short_note,\n    qualification_score: aiData.qualification_score,\n    score_reasoning: aiData.score_reasoning\n  };\n  \n  results.push({ json: finalLead });\n}\n\nconsole.log(`✅ Successfully processed ${results.length} leads`);\nreturn results;\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [544, 176],
+      "id": "7c9fd35b-323e-43bd-a0d9-665b738106ea",
+      "name": "Parse AI JSON & Format Final Data"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1LuRKjPnoesY5diovqj-YsaI5pKTzR_5Wemkla_R6DZA",
+          "mode": "list",
+          "cachedResultName": "Copy of Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company name": "={{ $json.company_name }}",
+            "Company website": "={{ $json.company_website }}",
+            "Industry / niche": "={{ $json.industry }}",
+            "Number of employees": "={{ $json.num_employees }}",
+            "Country": "={{ $json.country }}",
+            "Contact person full name": "={{ $json.contact_name }}",
+            "Job title": "={{ $json.job_title }}",
+            "Business email ": "={{ $json.business_email }}",
+            "LinkedIn profile URL ": "={{ $json.linkedin_profile }}",
+            "LinkedIn company page URL": "={{ $json.linkedin_company }}",
+            "Qualification score": "={{ $json.qualification_score }}",
+            "Score reasoning": "={{ $json.score_reasoning }}"
+          },
+          "matchingColumns": ["Business email "],
+          "schema": [
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Company website",
+              "displayName": "Company website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Industry / niche",
+              "displayName": "Industry / niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Number of employees",
+              "displayName": "Number of employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Contact person full name",
+              "displayName": "Contact person full name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Business email ",
+              "displayName": "Business email ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn profile URL ",
+              "displayName": "LinkedIn profile URL ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "LinkedIn company page URL",
+              "displayName": "LinkedIn company page URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Qualification score",
+              "displayName": "Qualification score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Score reasoning",
+              "displayName": "Score reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [800, 176],
+      "id": "e271cf2a-933c-4ac1-8b4c-26dec91004a8",
+      "name": "Append or update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Deduplicate & Deliver to Google Sheets",
+        "height": 368,
+        "width": 672,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [720, 0],
+      "id": "23321334-1b09-4378-a137-1fbbc7c4abcb",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4a6c6911-1d32-45c1-bfce-3dbc5404a6fc",
+              "leftValue": "={{ $json.person }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-1376, 224],
+      "id": "e93f4a29-99ba-4bc1-8f00-32865ec997fa",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1LuRKjPnoesY5diovqj-YsaI5pKTzR_5Wemkla_R6DZA",
+          "mode": "list",
+          "cachedResultName": "Copy of Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Error Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+            "Error Type": "Enrichment Failed",
+            "Lead Name": "={{ $json.first_name }} {{ $json.last_name }}",
+            "Apollo ID": "={{ $json.id }}",
+            "Company Name": "={{ $json.organization.name }}",
+            "Error Details": "Apollo API returned empty person object",
+            "Raw Data": "={{ JSON.stringify($json) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Error Type",
+              "displayName": "Error Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Lead Name",
+              "displayName": "Lead Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Apollo ID",
+              "displayName": "Apollo ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company Name",
+              "displayName": "Company Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Error Details",
+              "displayName": "Error Details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Raw Data",
+              "displayName": "Raw Data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1216, 304],
+      "id": "1723477e-fbbd-4787-8852-ed0ab358a063",
+      "name": "Log Error to Sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "user@example.com",
+        "subject": "=🚨 {{ $json.errorCount }} Lead(s) Failed Enrichment",
+        "message": "=<h2>⚠️ {{ $json.errorCount }} Lead Enrichment Error(s)</h2>\n\n<p>The following leads failed to enrich:</p>\n\n<ul>\n{{ $json.errors.map(e => `<li>${e.name} (${e.company}) - ID: ${e.id}</li>`).join('') }}\n</ul>\n\n<p>Check Error Log sheet for full details.</p>\n\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [-800, 304],
+      "id": "21238a97-ac0d-4e62-afb5-4134780bc560",
+      "name": "Send a message",
+      "webhookId": "2f6cfa41-9ce8-46e7-a5ee-93631cfd6c96"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allErrors = $input.all();\n\nif (allErrors.length === 0) {\n  return [];\n}\n\n// Group errors\nconst errorSummary = allErrors.map(error => ({\n  name: `${error.json.first_name} ${error.json.last_name}`,\n  company: error.json.organization?.name || 'Unknown',\n  id: error.json.id\n}));\n\nreturn [{\n  json: {\n    errorCount: allErrors.length,\n    errors: errorSummary,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1024, 304],
+      "id": "b61aeb89-bd19-4a46-b25d-c94bd7ff7867",
+      "name": "Aggregate Errors"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst validLeads = [];\nconst invalidLeads = [];\n\nconst isEmpty = (value) => {\n  if (value === null || value === undefined) return true;\n  if (typeof value === 'string') return value.trim() === '';\n  if (typeof value === 'number') return false;\n  return true;\n};\n\nfor (const item of items) {\n  const lead = item.json;\n\n  // 10 fields that map directly to Google Sheets BEFORE AI\n  const requiredFields = {\n    company_name: lead.company_name,\n    company_website: lead.company_website,\n    industry: lead.industry,\n    num_employees: lead.num_employees,\n    country: lead.country,\n    contact_name: lead.contact_name,\n    job_title: lead.job_title,\n    business_email: lead.business_email,\n    linkedin_profile: lead.linkedin_profile,\n    linkedin_company: lead.linkedin_company,\n  };\n\n  const missingFields = Object.entries(requiredFields)\n    .filter(([_, value]) => isEmpty(value))\n    .map(([key]) => key);\n\n  if (missingFields.length > 0) {\n    console.log(`❌ REJECTED: ${lead.contact_name || 'Unknown'} (${lead.company_name || 'N/A'}) - Missing: ${missingFields.join(', ')}`);\n    invalidLeads.push({\n      reason: 'Missing required fields',\n      missing: missingFields,\n      lead,\n    });\n    continue;\n  }\n\n  // VALIDATION 2: Ultra-strict domain/URL detection\nlet isDomainAsName = false;\nconst companyName = String(lead.company_name || '').trim();\n\n// Pattern 1: Contains any TLD (including ALL European + global TLDs)\nconst allTLDs = /\\.(com|net|org|io|ai|co|app|dev|tech|digital|online|site|website|store|shop|cloud|software|solutions|services|group|agency|studio|media|design|consulting|ltd|limited|inc|corp|biz|info|pro|name|mobi|tel|travel|jobs|cat|aero|museum|coop|edu|gov|mil|int|eu|de|uk|fr|es|it|nl|be|se|no|dk|fi|ch|at|pl|cz|ro|gr|pt|hu|sk|bg|hr|si|lt|lv|ee|is|mt|cy|lu|ie|us|ca|au|nz|jp|cn|in|br|ru|mx|ar|cl|za|ae|sa|tr|kr|sg|my|th|vn|ph|id|pk|bd|ng|ke|eg|gh|tz|ug|zm|zw|bw|mw|rw|sn|ci|cm|ao|mz|et|so|sd|ly|tn|dz|ma)$/i;\n\nif (allTLDs.test(companyName)) {\n  isDomainAsName = true;\n}\n\n// Pattern 2: Starts with www. or http(s)://\nif (!isDomainAsName && /^(www\\.|https?:\\/\\/|ftp:\\/\\/)/i.test(companyName)) {\n  isDomainAsName = true;\n}\n\n// Pattern 3: Contains protocol indicators\nif (!isDomainAsName && /(\\/\\/|:\\/\\/)/i.test(companyName)) {\n  isDomainAsName = true;\n}\n\n// Pattern 4: Looks like subdomain.domain.tld format (e.g., \"api.example.com\")\nif (!isDomainAsName && /^[a-z0-9-]+\\.[a-z0-9-]+\\.[a-z]{2,}$/i.test(companyName)) {\n  isDomainAsName = true;\n}\n\n// Pattern 5: Contains @ symbol (email-like)\nif (!isDomainAsName && companyName.includes('@')) {\n  isDomainAsName = true;\n}\n\n// Pattern 6: All lowercase with dots (likely domain)\nif (!isDomainAsName && /^[a-z0-9.-]+$/.test(companyName) && companyName.includes('.')) {\n  isDomainAsName = true;\n}\n\nif (isDomainAsName) {\n  console.log(`❌ REJECTED: ${lead.company_name} - Company name is a domain/URL`);\n  invalidLeads.push({\n    reason: 'Company name is domain/URL',\n    lead,\n  });\n  continue;\n}\n\n  // Employee count: must be 5-50 (target SMB range)\nconst emp = Number(lead.num_employees);\nif (!Number.isFinite(emp) || emp < 5 || emp > 50) {\n  console.log(`❌ REJECTED: ${lead.company_name} - Employee count ${lead.num_employees} outside 5-50 range`);\n  invalidLeads.push({\n    reason: 'Employee count not in 5-50 target range',\n    lead,\n  });\n  continue;\n}\n\n  console.log(`✅ VALID: ${lead.company_name} - ${lead.contact_name}`);\n  validLeads.push(item);\n}\n\nconsole.log(`\\n📊 SUMMARY: ${validLeads.length} valid, ${invalidLeads.length} invalid`);\n\nif (invalidLeads.length > 0) {\n  console.log('\\n❌ INVALID LEADS:');\n  invalidLeads.forEach(inv => {\n    console.log(`- ${inv.lead.contact_name || 'Unknown'} (${inv.lead.company_name || 'N/A'}): ${inv.reason}${inv.missing ? ' [' + inv.missing.join(', ') + ']' : ''}`);\n  });\n}\n\nreturn validLeads;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-320, 208],
+      "id": "6d23c4ef-e1ba-407f-bb66-d22347acade2",
+      "name": "Filter Invalid Lead"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1LuRKjPnoesY5diovqj-YsaI5pKTzR_5Wemkla_R6DZA",
+          "mode": "list",
+          "cachedResultName": "Copy of Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Workflow Config",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Setting",
+              "lookupValue": "current_page"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-2272, 224],
+      "id": "48708c1b-68d3-4564-9c25-db4f3f553c42",
+      "name": "Get Current Page Number"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1LuRKjPnoesY5diovqj-YsaI5pKTzR_5Wemkla_R6DZA",
+          "mode": "list",
+          "cachedResultName": "Copy of Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Workflow Config",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Setting": "current_page",
+            "Value": "={{ $('Get Current Page Number').item.json.Value + 1 }}"
+          },
+          "matchingColumns": ["Setting"],
+          "schema": [
+            {
+              "id": "Setting",
+              "displayName": "Setting",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Value",
+              "displayName": "Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1008, 176],
+      "id": "1dc4fd17-18a3-4d27-9bc2-135954d331a0",
+      "name": "Update Page Counter",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1LuRKjPnoesY5diovqj-YsaI5pKTzR_5Wemkla_R6DZA",
+          "mode": "list",
+          "cachedResultName": "Copy of Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Workflow Config",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Setting": "last_run_date",
+            "Value": "={{ $now.format('yyyy-MM-dd HH:mm:ss') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Setting",
+              "displayName": "Setting",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Value",
+              "displayName": "Value",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1216, 176],
+      "id": "30ea3726-6e04-4a8b-95ca-d144608757e4",
+      "name": "Update last run date",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-2544, 112],
+      "id": "dc404089-a316-4b27-8aaa-ac8415264d4f",
+      "name": "Schedule Trigger",
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get Current Page Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo - Search Decision Makers": {
+      "main": [
+        [
+          {
+            "node": "Split People Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split People Array": {
+      "main": [
+        [
+          {
+            "node": "Apollo - Enrich Person Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo - Enrich Person Details": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract 12 Required Fields": {
+      "main": [
+        [
+          {
+            "node": "Filter Invalid Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI - Generate Short Note & Score": {
+      "main": [
+        [
+          {
+            "node": "Merge Lead Data + AI Scores",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Lead Data + AI Scores": {
+      "main": [
+        [
+          {
+            "node": "Parse AI JSON & Format Final Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI JSON & Format Final Data": {
+      "main": [
+        [
+          {
+            "node": "Append or update row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Extract 12 Required Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Error to Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Error to Sheet": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Errors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Errors": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Invalid Lead": {
+      "main": [
+        [
+          {
+            "node": "AI - Generate Short Note & Score",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Lead Data + AI Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Current Page Number": {
+      "main": [
+        [
+          {
+            "node": "Apollo - Search Decision Makers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append or update row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Update Page Counter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Page Counter": {
+      "main": [
+        [
+          {
+            "node": "Update last run date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Current Page Number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "78dabe1a-0f6b-4460-bdd2-131db28e6e57",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "754cfcc80730aec1551897910a5ec369f711d38292548fdc54e991e4ce30df54"
+  },
+  "id": "mtzLfjThv-gK11gkGWA7F",
+  "tags": []
+}

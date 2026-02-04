@@ -1,0 +1,2382 @@
+{
+  "name": "Personalized Outreach & Follow-Up - Phase 2",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## LEAD PREPARATION & PERSONALIZATION",
+        "height": 320,
+        "width": 2272
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-2016, -48],
+      "id": "edb4c661-b2c6-413e-a23a-919a756865fb",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1968, 80],
+      "id": "392a5c52-7365-4738-94e0-d9f8919e690b",
+      "name": "Daily 9AM Campaign"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Contacted",
+              "lookupValue": "No"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1456, 80],
+      "id": "91ad2d31-4213-4f85-ad35-52b9f8c6f3bd",
+      "name": "Fetch All Leads",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [-1248, 80],
+      "id": "12705805-1ced-4bc8-be3e-4d52d67bcc50",
+      "name": "Cap at 10 Daily"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Randomize the order of leads (looks more natural)\nconst items = $input.all();\n\n// Shuffle array\nfor (let i = items.length - 1; i > 0; i--) {\n  const j = Math.floor(Math.random() * (i + 1));\n  [items[i], items[j]] = [items[j], items[i]];\n}\n\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1040, 80],
+      "id": "5a501a92-476a-4555-b65d-d4933e524bb9",
+      "name": "Randomize Lead Order"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  // Prepare data for AI personalization\n  const preparedData = {\n    // Lead information\n    company_name: lead['Company name'] || '',\n    contact_name: lead['Contact person full name'] || '',\n    first_name: (lead['Contact person full name'] || '').split(' ')[0],\n    job_title: lead['Job title'] || '',\n    industry: lead['Industry / niche'] || '',\n    business_email: lead['Business email '] || lead['Business email'] || '',\n    \n    // Context for personalization\n    qualification_reasoning: lead['Score reasoning'] || '',\n    num_employees: lead['Number of employees'] || '',\n    country: lead['Country'] || '',\n    \n    // Tracking\n    row_number: item.pairedItem?.item || 0\n  };\n  \n  results.push({ json: preparedData });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-576, 96],
+      "id": "1ecc3fcb-0d59-44dd-8bff-8d7c6af0cdac",
+      "name": "Extract & Prepare Lead Data"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are a B2B cold email expert writing for Michael, an Automation Consultant at ObiunDigital.\n\nMichael's positioning: He helps companies IDENTIFY where time, cost, and errors are leaking in their operations. he's a consultant who finds problems first, then designs solutions (whether through automation, process redesign, or a combination of tools and specialists).\n\nWrite a personalized cold email that:\n- Positions Michael as a consultant who helps identify operational inefficiencies, not someone pitching automation\n- Focuses on WHERE friction likely exists in their operations.\n- Mentions the types of operational bottlenecks commonly found in similar companies\n- Keeps it under 150 words\n- Has a clear, low-pressure CTA focused on \"identifying\" problems, not selling solutions\n- Uses proper paragraph breaks (empty lines between paragraphs)\n\nIMPORTANT: Format the email body with proper line breaks:\n- Each paragraph should be separated by a blank line (\\n\\n)\n- Bullet points should each be on a new line\n\nOutput ONLY valid JSON with this structure:\n{\n  \"subject\": \"Email subject line (max 50 chars)\",\n  \"body\": \"Full email body with proper \\n\\n paragraph breaks and \\n bullet formatting\",\n  \"relevant_process\": \"The specific operational area mentioned (e.g., order handling, internal coordination)\"\n}\n"
+            },
+            {
+              "content": "=Write Email 1 for this lead:\n\nCompany: {{ $json.company_name }}\nContact: {{ $json.first_name }} {{ $json.job_title }}\nIndustry: {{ $json.industry }}\nEmployees: {{ $json.num_employees }}\nCountry: {{ $json.country }}\n\nWhy they're qualified: {{ $json.qualification_reasoning }}\n\nUse this template structure but personalize heavily based on their industry and operational context:\n\nSubject: Reducing manual work at {Company Name}\n\nHi {First Name},\n\nI came across {Company Name} while looking into companies active in {industry}.\n\nIn similar organizations, we often find that 20–40% of daily operational work is still manual, usually spread across {relevant operational areas: e.g., order handling, inventory updates, internal coordination between systems and teams}.\n\nMy role is to help companies identify where time, cost, and errors are leaking in their operations, and then design the most effective way to eliminate that friction, whether through automation, process redesign, or a combination of tools and specialists.\n\nThis typically results in:\n• 30–60% reduction in manual work\n• Faster turnaround times (hours reduced to minutes)\n• Fewer errors and less dependency on individual staff members\n• Structural cost savings, not short-term optimizations\n\nNo heavy IT projects or system replacements, we automate on top of existing tools.\n\nWould it be worth a 15-minute conversation to identify where {Company Name} could save the most time and cost?\n\nBest regards,\n\nMichael\nAutomation Consultant\nObiunDigital\n\nIMPORTANT: Make sure to identify specific operational areas (not just \"processes\") where friction likely exists based on their industry.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [-240, 96],
+      "id": "9eab7d10-53bf-4edd-b977-20e1e1aec4d8",
+      "name": "Generate Personalized Email 1",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 5 }}",
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [560, 160],
+      "id": "fe8d8ec4-eeda-41ad-9387-7c1cf5be6071",
+      "name": "Random Delay (5-10 minutes)",
+      "webhookId": "c43255d0-277b-4301-857c-7b93198c1ff8"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Extract & Prepare Lead Data').item.json.business_email }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Michael",
+          "replyTo": "user@example.com"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [928, 160],
+      "id": "ad5f6af0-5f1b-4256-8b7e-df1075cd8a92",
+      "name": "Send Email 1",
+      "webhookId": "b871205f-221a-4d25-8716-517a2a87b2f1",
+      "executeOnce": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Format date as YYYY-MM-DD HH:MM:SS\n  const sentDate = now.toISOString().replace('T', ' ').substring(0, 19);\n  \n  results.push({\n    json: {\n      business_email: item.json.business_email,\n      contacted: 'Yes',\n      email_1_sent_date: sentDate,\n      company_name: item.json.company_name,\n      sent_timestamp: now.getTime()\n    }\n  });\n}\n\nconsole.log(`📊 Preparing to update ${results.length} rows in Google Sheets`);\nreturn results;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1168, 80],
+      "id": "6a03e6c2-9342-48da-879d-a53b5e187963",
+      "name": "Prepare Sheet Update Data"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Business email ": "={{ $('Extract & Prepare Lead Data').item.json.business_email }}",
+            "Contacted": "={{ $json.contacted }}",
+            "Email 1  Sent Date": "={{ $json.email_1_sent_date }}"
+          },
+          "matchingColumns": ["Business email "],
+          "schema": [
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Company website",
+              "displayName": "Company website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Industry / niche",
+              "displayName": "Industry / niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Number of employees",
+              "displayName": "Number of employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contact person full name",
+              "displayName": "Contact person full name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Business email ",
+              "displayName": "Business email ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn profile URL ",
+              "displayName": "LinkedIn profile URL ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn company page URL",
+              "displayName": "LinkedIn company page URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Qualification score",
+              "displayName": "Qualification score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Score reasoning",
+              "displayName": "Score reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contacted",
+              "displayName": "Contacted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Email 1  Sent Date",
+              "displayName": "Email 1  Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email 2 Sent Date",
+              "displayName": "Email 2 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 3 Sent Date",
+              "displayName": "Email 3 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Reply Date",
+              "displayName": "Reply Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1360, 80],
+      "id": "9c3af513-7cf1-4bae-ab7d-4ae37fe60cfd",
+      "name": "Update Contacted Status",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Calculate stats\nconst stats = {\n  date: new Date().toISOString().split('T')[0],\n  emails_sent: items.length,\n  campaign: 'Email 1 - Initial Outreach',\n  status: 'Completed',\n  leads_contacted: items.map(i => i.json.company_name).join(', ')\n};\n\nconsole.log('📈 DAILY STATS:');\nconsole.log(`Date: ${stats.date}`);\nconsole.log(`Emails Sent: ${stats.emails_sent}`);\nconsole.log(`Companies: ${stats.leads_contacted}`);\n\nreturn [{ json: stats }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1552, 80],
+      "id": "44864935-a778-46fc-8d6c-be0ba348ae20",
+      "name": "Daily Stats Logger"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const leadData = item.json;\n  \n  // Extract AI output\n  let aiOutput;\n  if (leadData.output && Array.isArray(leadData.output)) {\n    if (leadData.output[0]?.content?.[0]?.text) {\n      aiOutput = leadData.output[0].content[0].text;\n    } else if (leadData.output[0]?.text) {\n      aiOutput = leadData.output[0].text;\n    }\n  } else if (leadData.text) {\n    aiOutput = leadData.text;\n  }\n  \n  // Clean JSON\n  let cleanJson = aiOutput\n    .replace(/```json\\n?/gi, '')\n    .replace(/```\\n?/g, '')\n    .replace(/^[^{]*/g, '')\n    .replace(/[^}]*$/g, '')\n    .trim();\n  \n  // Parse AI response\n  let aiData;\n  try {\n    aiData = JSON.parse(cleanJson);\n  } catch (e) {\n    console.log('AI parsing failed, using fallback');\n    aiData = {\n      subject: `Quick question about ${leadData.company_name}`,\n      body: `Hi ${leadData.first_name},\\n\\nI came across ${leadData.company_name} while researching companies in ${leadData.industry}.\\n\\nWe help teams automate manual processes, typically reducing operational work by 30-60%.\\n\\nWould a brief conversation be valuable?\\n\\nBest regards,\\nMichael`,\n      relevant_process: 'operational processes'\n    };\n  }\n  \n  // NO FOOTER HERE - will be added in next node\n  results.push({\n    json: {\n      ...leadData,\n      email_subject: aiData.subject,\n      email_body: aiData.body,\n      relevant_process: aiData.relevant_process\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [112, 96],
+      "id": "a7b21c1a-c62d-4e5e-9bd6-956a0529ed13",
+      "name": "Parse AI"
+    },
+    {
+      "parameters": {
+        "content": "## EMAIL SENDING & TRACKING",
+        "height": 336,
+        "width": 1408,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [304, -48],
+      "id": "063d4609-7dac-4e1f-9df2-61e760d8566d",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 10
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-1600, 496],
+      "id": "5c2bb1c6-a32a-498a-86bb-c0fe92001174",
+      "name": "Daily 10AM Follow-up Check"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-1120, 496],
+      "id": "f952f604-87cf-4581-8149-c723412ceec5",
+      "name": "Fetch All Contacted Leads",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\n// Get current date\nconst now = new Date();\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  // Get the date columns (handle different possible names)\n  const email1Date = lead['Email_1_Sent_Date'] || lead['Email 1  Sent Date'] || lead['Email 1 Sent Date'];\n  const email2Date = lead['Email_2_Sent_Date'] || lead['Email 2 Sent Date'];\n  const replyDate = lead['Reply_Date'] || lead['Reply Date'];\n  const replySentiment = lead['Reply_Sentiment'] || lead['Reply Sentiment'] || '';\n  \n  // ✅ SKIP IF UNSUBSCRIBED\n  if (replySentiment === 'UNSUBSCRIBE') {\n    console.log(`🚫 ${lead['Company name']} requested unsubscribe - skipping Email 2`);\n    continue;\n  }\n  \n  // Skip if:\n  // - Email 1 was never sent\n  // - Email 2 was already sent\n  // - They already replied\n  if (!email1Date || email2Date || replyDate) {\n    continue;\n  }\n  \n  // Parse Email 1 sent date\n  const sentDate = new Date(email1Date);\n  \n  // Calculate days since Email 1\n  const daysDiff = Math.floor((now - sentDate) / (1000 * 60 * 60 * 24));\n  \n  // Send Email 2 exactly 5 days after Email 1 (Michael's requirement)\n  if (daysDiff === 5) {\n    console.log(`✅ ${lead['Company name']} needs Email 2 (Email 1 sent ${daysDiff} days ago)`);\n    results.push(item);\n  }\n}\n\nconsole.log(`📧 Total leads needing Email 2 today: ${results.length}`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-912, 496],
+      "id": "515bff2a-9000-42ca-8d18-3ec5ccc74c71",
+      "name": "Check Who Needs Email 2"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are a B2B cold email expert writing follow-up Email 2 for Michael, an Automation Consultant at ObiunDigital.\n\nThis is a soft follow-up to check if the first email reached the right person.\n\nWrite a personalized follow-up that:\n- Is brief and respectful (under 100 words)\n- Acknowledges they might be busy\n- Gives them an easy out (\"not relevant\" is fine)\n- Offers one concrete example if they're interested\n- Uses proper paragraph breaks (empty lines between paragraphs)\n\nIMPORTANT: Format with proper line breaks (\\n\\n between paragraphs).\n\n\nOutput ONLY valid JSON with this structure:\n{\n  \"subject\": \"Email subject line (max 50 chars)\",\n  \"body\": \"Full email body with proper line breaks\"\n}"
+            },
+            {
+              "content": "=Write Email 2 (follow-up) for this lead:\n\nCompany: {{ $json['Company name'] }}\nContact: {{ $json['Contact person full name'] }} {{ $json['Job title'] }}\nIndustry: {{ $json['Industry / niche'] }}\nEmployees: {{ $json['Number of employees'] }}\n\nUse this template structure but personalize:\n\nSubject: Quick check — automation at {Company Name}\n\nHi {First Name},\n\nJust checking in — not sure if this is relevant for you, or if I should reach out to someone else at {Company Name}.\n\nThe reason I reached out is that, in similar teams, we often uncover small operational bottlenecks that quietly cost hours each week, without being visible in reports or KPIs.\n\nIf automation isn't a priority right now, no problem at all — a short reply like \"not relevant\" is perfectly fine.\n\nOtherwise, I'm happy to share one concrete example of where companies typically save time and cost with minimal effort.\n\nBest regards,\n\nMichael\nAutomation Consultant\nObiunDigital\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [-704, 496],
+      "id": "fe050d70-a48e-4bfb-80f9-c902772c425f",
+      "name": "Generate Personalized Email 2",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const leadData = item.json;\n  \n  // Extract AI output\n  let aiOutput;\n  if (leadData.output && Array.isArray(leadData.output)) {\n    if (leadData.output[0]?.content?.[0]?.text) {\n      aiOutput = leadData.output[0].content[0].text;\n    } else if (leadData.output[0]?.text) {\n      aiOutput = leadData.output[0].text;\n    }\n  } else if (leadData.text) {\n    aiOutput = leadData.text;\n  }\n  \n  // Clean JSON markers\n  let cleanJson = aiOutput\n    .replace(/```json\\n?/gi, '')\n    .replace(/```\\n?/g, '')\n    .replace(/^[^{]*/g, '')\n    .replace(/[^}]*$/g, '')\n    .trim();\n  \n  // Parse AI response\n  let aiData;\n  try {\n    aiData = JSON.parse(cleanJson);\n  } catch (e) {\n    console.log(`⚠️ AI parsing failed for ${leadData.company_name}, using fallback`);\n    aiData = {\n      subject: `Quick check — ${leadData.company_name}`,\n      body: `Hi ${leadData.first_name},\\n\\nJust checking in — not sure if this is relevant for you.\\n\\nIf automation isn't a priority right now, no problem at all.\\n\\nOtherwise, I'm happy to share a quick example of where similar companies save time.\\n\\nBest regards,\\n\\nMichael\\nAutomation Consultant\\nObiunDigital`\n    };\n  }\n  \n  // NO FOOTER HERE - will be added in next node\n  results.push({\n    json: {\n      ...leadData,\n      email_subject: aiData.subject,\n      email_body: aiData.body\n    }\n  });\n}\n\nconsole.log(`✅ Parsed ${results.length} Email 2 messages`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-352, 496],
+      "id": "d57220cd-e392-4064-89d5-51c45595a7d2",
+      "name": "Parse AI Email 2 Response"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Format date as YYYY-MM-DD HH:MM:SS\n  const sentDate = now.toISOString().replace('T', ' ').substring(0, 19);\n  \n  results.push({\n    json: {\n      business_email: item.json.business_email,\n      email_2_sent_date: sentDate,\n      company_name: item.json.company_name\n    }\n  });\n}\n\nconsole.log(`📊 Updating ${results.length} Email 2 records in Google Sheets`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [656, 496],
+      "id": "8f1be71d-f297-47b4-b50d-eb3f6b62ba25",
+      "name": "Prepare Email 2 Sheet Update"
+    },
+    {
+      "parameters": {
+        "content": "## FOLLOW-UP SEQUENCE MANAGER",
+        "height": 560,
+        "width": 3168,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1632, 336],
+      "id": "7aabe8d8-7fca-4f97-bf8f-940f97fbdc47",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\n// Get current date\nconst now = new Date();\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  // Get the date columns\n  const email2Date = lead['Email_2_Sent_Date'] || lead['Email 2 Sent Date'];\n  const email3Date = lead['Email_3_Sent_Date'] || lead['Email 3 Sent Date'];\n  const replyDate = lead['Reply_Date'] || lead['Reply Date'];\n  const replySentiment = lead['Reply_Sentiment'] || lead['Reply Sentiment'] || '';\n  \n  // ✅ SKIP IF UNSUBSCRIBED\n  if (replySentiment === 'UNSUBSCRIBE') {\n    console.log(`🚫 ${lead['Company name']} requested unsubscribe - skipping Email 3`);\n    continue;\n  }\n  \n  // Skip if:\n  // - Email 2 was never sent\n  // - Email 3 was already sent\n  // - They already replied\n  if (!email2Date || email3Date || replyDate) {\n    continue;\n  }\n  \n  // Parse Email 2 sent date\n  const sentDate = new Date(email2Date);\n  \n  // Calculate days since Email 2\n  const daysDiff = Math.floor((now - sentDate) / (1000 * 60 * 60 * 24));\n  \n  // Send Email 3 exactly 5 days after Email 2 (which is 10 days after Email 1)\n  if (daysDiff === 5) {\n    console.log(`✅ ${lead['Company name']} needs Email 3 (Email 2 sent ${daysDiff} days ago)`);\n    results.push(item);\n  }\n}\n\nconsole.log(`📧 Total leads needing Email 3 today: ${results.length}`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-912, 704],
+      "id": "37decb90-b69e-4503-88d3-ac04eb860515",
+      "name": "Check Who Needs Email 3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  // Extract and prepare lead data for Email 3 personalization\n  const preparedData = {\n    // Lead information\n    company_name: lead['Company name'] || '',\n    contact_name: lead['Contact person full name'] || '',\n    first_name: (lead['Contact person full name'] || '').split(' ')[0],\n    job_title: lead['Job title'] || '',\n    industry: lead['Industry / niche'] || '',\n    business_email: lead['Business email '] || lead['Business email'] || '',\n    \n    // Context for personalization\n    qualification_reasoning: lead['Score reasoning'] || '',\n    num_employees: lead['Number of employees'] || '',\n    country: lead['Country'] || ''\n  };\n  \n  results.push({ json: preparedData });\n}\n\nconsole.log(`📋 Prepared ${results.length} leads for Email 3 personalization`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-704, 704],
+      "id": "626f6646-5e33-4a28-ac81-a6d6fbf208fd",
+      "name": "Prepare Email 3 Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const leadData = item.json;\n  \n  // Extract AI output\n  let aiOutput;\n  if (leadData.output && Array.isArray(leadData.output)) {\n    if (leadData.output[0]?.content?.[0]?.text) {\n      aiOutput = leadData.output[0].content[0].text;\n    } else if (leadData.output[0]?.text) {\n      aiOutput = leadData.output[0].text;\n    }\n  } else if (leadData.text) {\n    aiOutput = leadData.text;\n  }\n  \n  // Clean JSON markers\n  let cleanJson = aiOutput\n    .replace(/```json\\n?/gi, '')\n    .replace(/```\\n?/g, '')\n    .replace(/^[^{]*/g, '')\n    .replace(/[^}]*$/g, '')\n    .trim();\n  \n  // Parse AI response\n  let aiData;\n  try {\n    aiData = JSON.parse(cleanJson);\n  } catch (e) {\n    console.log(`⚠️ AI parsing failed for ${leadData.company_name}, using fallback`);\n    aiData = {\n      subject: `One example for ${leadData.company_name}`,\n      body: `Hi ${leadData.first_name},\\n\\nI didn't want to follow up without adding value.\\n\\nIn teams similar to ${leadData.company_name}, we often see automation wins around operational processes that remove several hours of manual work per week.\\n\\nThis may or may not be relevant — but if it is, I'm happy to share the specifics.\\n\\nWould you like me to share the example, or leave it here for now?\\n\\nBest regards,\\n\\nMichael\\nAutomation Consultant\\nObiunDigital`\n    };\n  }\n  \n  // NO FOOTER HERE - will be added in next node\n  results.push({\n    json: {\n      ...leadData,\n      email_subject: aiData.subject,\n      email_body: aiData.body\n    }\n  });\n}\n\nconsole.log(`✅ Parsed ${results.length} Email 3 messages`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-144, 704],
+      "id": "ff9874a2-c456-4bcc-9628-cdf7dd5b7bb3",
+      "name": "Parse AI Email 3 Response"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 5 }}",
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [304, 704],
+      "id": "4dcf18d1-30f3-48c1-9d93-de70879422e8",
+      "name": "Random Delay (5-10 minutes)2",
+      "webhookId": "22f5c542-cc35-4885-b564-c544e2d689ee"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Prepare Email 3 Data').item.json.business_email }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Michael",
+          "replyTo": "user@example.com"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [720, 704],
+      "id": "100ecdc6-13f7-48d7-9f01-0e3ce1c6916a",
+      "name": "Send Email 3",
+      "webhookId": "43ab9576-9651-485c-81ff-63b883c0bd7e",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Format date as YYYY-MM-DD HH:MM:SS\n  const sentDate = now.toISOString().replace('T', ' ').substring(0, 19);\n  \n  results.push({\n    json: {\n      business_email: item.json.business_email,\n      email_3_sent_date: sentDate,\n      company_name: item.json.company_name\n    }\n  });\n}\n\nconsole.log(`📊 Updating ${results.length} Email 3 records in Google Sheets`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [928, 704],
+      "id": "98df9da2-d214-406b-803c-574277b2aecd",
+      "name": "Prepare Email 3 Sheet Update"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email 3 Sent Date": "={{ $json.email_3_sent_date }}",
+            "Business email ": "={{ $('Prepare Email 3 Data').item.json.business_email }}"
+          },
+          "matchingColumns": ["Business email "],
+          "schema": [
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Company website",
+              "displayName": "Company website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Industry / niche",
+              "displayName": "Industry / niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Number of employees",
+              "displayName": "Number of employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contact person full name",
+              "displayName": "Contact person full name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Business email ",
+              "displayName": "Business email ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn profile URL ",
+              "displayName": "LinkedIn profile URL ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn company page URL",
+              "displayName": "LinkedIn company page URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Qualification score",
+              "displayName": "Qualification score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Score reasoning",
+              "displayName": "Score reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contacted",
+              "displayName": "Contacted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 1  Sent Date",
+              "displayName": "Email 1  Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 2 Sent Date",
+              "displayName": "Email 2 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 3 Sent Date",
+              "displayName": "Email 3 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reply Date",
+              "displayName": "Reply Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1136, 704],
+      "id": "9eaec72d-fef4-4801-abc6-7d7607f5d03b",
+      "name": "Update Email 3 Sent Date",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Email 2 Sent Date": "={{ $json.email_2_sent_date }}",
+            "Business email ": "={{ $('Check Who Needs Email 2').item.json[\"Business email \"] }}"
+          },
+          "matchingColumns": ["Business email "],
+          "schema": [
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Company website",
+              "displayName": "Company website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Industry / niche",
+              "displayName": "Industry / niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Number of employees",
+              "displayName": "Number of employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contact person full name",
+              "displayName": "Contact person full name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Business email ",
+              "displayName": "Business email ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn profile URL ",
+              "displayName": "LinkedIn profile URL ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn company page URL",
+              "displayName": "LinkedIn company page URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Qualification score",
+              "displayName": "Qualification score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Score reasoning",
+              "displayName": "Score reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contacted",
+              "displayName": "Contacted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 1  Sent Date",
+              "displayName": "Email 1  Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 2 Sent Date",
+              "displayName": "Email 2 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email 3 Sent Date",
+              "displayName": "Email 3 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Reply Date",
+              "displayName": "Reply Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [864, 496],
+      "id": "58ed6989-3772-4514-8bdb-f4304123bef8",
+      "name": "Update Email 2 Sent Date",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Check Who Needs Email 2').item.json[\"Business email \"] }}",
+        "subject": "={{ $json.email_subject }}",
+        "emailType": "text",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Michael",
+          "replyTo": "user@example.com"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [480, 496],
+      "id": "bbb4de58-7d60-4a40-8412-fa3b7ae78b85",
+      "name": "Send Email 2",
+      "webhookId": "fb0f6839-a90d-41f1-b512-2ba50cb797b0",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\n// Calculate stats\nconst stats = {\n  date: new Date().toISOString().split('T')[0],\n  emails_sent: items.length,\n  campaign: 'Email 3 - Final Follow-up',\n  status: 'Completed',\n  leads_contacted: items.map(i => i.json.company_name).join(', ')\n};\n\nconsole.log('📈 EMAIL 3 STATS:');\nconsole.log(`Date: ${stats.date}`);\nconsole.log(`Emails Sent: ${stats.emails_sent}`);\nconsole.log(`Companies: ${stats.leads_contacted}`);\n\nreturn [{ json: stats }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1344, 704],
+      "id": "c04d9c06-a87b-4bba-9936-79efdc00b506",
+      "name": "Email 3 Stats Logger"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "=You are a B2B cold email expert writing follow-up Email 3 (final follow-up) for Michael, an Automation Consultant at ObiunDigital.\n\nThis is the final follow-up that adds value by sharing a specific example.\n\nWrite a personalized final follow-up that:\n- Is brief and value-focused (under 120 words)\n- Shares a specific, relevant automation example for their industry\n- Gives them clear next steps (share example OR leave it)\n- Respects their time and decision\n- Uses proper paragraph breaks (empty lines between paragraphs)\n\nIMPORTANT: Format with proper line breaks (\\n\\n between paragraphs).\n\n\nOutput ONLY valid JSON with this structure:\n{\n  \"subject\": \"Email subject line (max 50 chars)\",\n  \"body\": \"Full email body with proper line breaks\"\n}"
+            },
+            {
+              "content": "=Write Email 3 (final follow-up) for this lead:\n\nCompany: {{ $json.company_name }}\nContact: {{ $json.first_name }} {{ $json.job_title }}\nIndustry: {{ $json.industry }}\nEmployees: {{ $json.num_employees }}\n\nWhy they're qualified: {{ $json.qualification_reasoning }}\n\nUse this template structure but personalize heavily:\n\nSubject: One example that might be relevant for {Company Name}\n\nHi {First Name},\n\nI didn't want to follow up without adding value, so I'll keep this brief.\n\nIn teams similar to {Company Name}, one of the most common automation wins we see is around {insert highly relevant process based on their industry: e.g. lead handling, internal approvals, reporting, handovers}.\n\nThis typically removes several hours of manual work per week, without changing existing tools or workflows.\n\nThis may or may not be relevant for you — but if it is, I'm happy to walk you through the logic behind it so you can decide for yourself whether it's worth exploring.\n\nWould you like me to:\n• share the example, or\n• leave it here for now?\n\nBest regards,\n\nMichael\nAutomation Consultant\nObiunDigital\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [-496, 704],
+      "id": "5c15e73f-3694-454b-bfd9-58ffab913e01",
+      "name": "Generate Personalized Email 3",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Get current hour in CET/CEST (Amsterdam timezone)\n  const options = { timeZone: 'Europe/Amsterdam', hour: 'numeric', hour12: false };\n  const hour = parseInt(new Intl.DateTimeFormat('en-US', options).format(now));\n  \n  // Only send between 9 AM and 4 PM CET/CEST\n  if (hour >= 9 && hour < 16) {\n    console.log(`✅ Within business hours (${hour}:00 CET). Sending Email 1 to ${item.json.company_name}`);\n    results.push(item);\n  } else {\n    console.log(`⏰ Outside business hours (${hour}:00 CET). Skipping Email 1 to ${item.json.company_name}`);\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [752, 160],
+      "id": "74dd14a5-ee2e-4176-814f-ed33c82f2cd9",
+      "name": "Validate Business Hours - Email 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Get current hour in CET/CEST (Amsterdam timezone)\n  const options = { timeZone: 'Europe/Amsterdam', hour: 'numeric', hour12: false };\n  const hour = parseInt(new Intl.DateTimeFormat('en-US', options).format(now));\n  \n  // Only send between 9 AM and 4 PM CET/CEST\n  if (hour >= 9 && hour < 16) {\n    console.log(`✅ Within business hours (${hour}:00 CET). Sending Email 2 to ${item.json['Company name']}`);\n    results.push(item);\n  } else {\n    console.log(`⏰ Outside business hours (${hour}:00 CET). Skipping Email 2 to ${item.json['Company name']}`);\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [256, 496],
+      "id": "e05b0fd9-1e1e-4c88-acf8-88e2337a9a94",
+      "name": "Validate Business Hours - Email 2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const now = new Date();\n  \n  // Get current hour in CET/CEST (Amsterdam timezone)\n  const options = { timeZone: 'Europe/Amsterdam', hour: 'numeric', hour12: false };\n  const hour = parseInt(new Intl.DateTimeFormat('en-US', options).format(now));\n  \n  // Only send between 9 AM and 4 PM CET/CEST\n  if (hour >= 9 && hour < 16) {\n    console.log(`✅ Within business hours (${hour}:00 CET). Sending Email 3 to ${item.json['Company name']}`);\n    results.push(item);\n  } else {\n    console.log(`⏰ Outside business hours (${hour}:00 CET). Skipping Email 3 to ${item.json['Company name']}`);\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [512, 704],
+      "id": "8bf7755f-ae4d-4496-ae0b-24bb77d1101f",
+      "name": "Validate Business Hours - Email 3"
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {},
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "position": [-1264, 1312],
+      "id": "474a4f55-b6f5-4c2d-9268-1c1cb0c6ca08",
+      "name": "New Email Received",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const email = item.json;\n  \n  // When \"Simplify\" is disabled, we get these fields\n  const fromData = email.from || {};\n  const toData = email.to || {};\n  \n  // Extract sender email and name\n  let senderEmail = '';\n  let senderName = '';\n  \n  if (fromData.value && Array.isArray(fromData.value) && fromData.value.length > 0) {\n    senderEmail = (fromData.value[0].address || '').toLowerCase();\n    senderName = fromData.value[0].name || '';\n  }\n  \n  // Extract subject\n  const subject = email.subject || '';\n  \n  // FULL EMAIL BODY - this is the key field!\n  const fullBody = email.text || email.textPlain || '';\n  \n  // HTML version if needed\n  const htmlBody = email.textAsHtml || '';\n  \n  // Date\n  const receivedDate = email.date || new Date().toISOString();\n  \n  // Message ID for threading\n  const messageId = email.messageId || email.id || '';\n  \n  console.log(`📧 ============= NEW REPLY RECEIVED =============`);\n  console.log(`📧 From: ${senderName} <${senderEmail}>`);\n  console.log(`📧 Subject: ${subject}`);\n  console.log(`📧 Body Length: ${fullBody.length} characters`);\n  console.log(`📧 Preview: ${fullBody.substring(0, 200)}...`);\n  console.log(`📧 ===============================================`);\n  \n  results.push({\n    json: {\n      sender_email: senderEmail,\n      sender_name: senderName,\n      subject: subject,\n      body: fullBody, // FULL BODY - no snippet!\n      body_html: htmlBody,\n      received_date: receivedDate,\n      message_id: messageId,\n      thread_id: email.threadId || '',\n      \n      // Keep original from/to for reference\n      original_from: fromData.text || '',\n      original_to: toData.text || ''\n    }\n  });\n}\n\nconsole.log(`✅ Processed ${results.length} email(s)`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1040, 1312],
+      "id": "7c0f2ddc-0a96-4946-8cf1-081f4e8532ad",
+      "name": "Extract Reply Details"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "3a9d8160-2bbe-412d-8db7-25fde2ca5f01",
+              "leftValue": "={{ $json['Company name'] }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-624, 1312],
+      "id": "95b5c6c6-6aec-4cd5-9726-0d9f2601b60c",
+      "name": "IF - Is This a Lead Reply?"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  // Lead data from Google Sheets lookup\n  const leadData = item.json;\n  \n  // Reply data from the Gmail trigger (previous nodes)\n  const replyData = $('Extract Reply Details').item.json;\n  \n  // Combine both datasets\n  const preparedData = {\n    // Lead info from Google Sheets\n    company_name: leadData['Company name'] || '',\n    contact_name: leadData['Contact person full name'] || '',\n    first_name: (leadData['Contact person full name'] || '').split(' ')[0],\n    business_email: leadData['Business email '] || leadData['Business email'] || '',\n    industry: leadData['Industry / niche'] || '',\n    \n    // Reply info from Gmail\n    reply_subject: replyData.subject || '',\n    reply_body: replyData.body || '',\n    reply_date: replyData.received_date || '',\n    sender_name: replyData.sender_name || '',\n    \n    // Tracking\n    message_id: replyData.message_id || '',\n    thread_id: replyData.thread_id || ''\n  };\n  \n  console.log(`✅ Preparing sentiment analysis for: ${preparedData.company_name}`);\n  console.log(`   Reply length: ${preparedData.reply_body.length} characters`);\n  \n  results.push({ json: preparedData });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-416, 1216],
+      "id": "7e8d41a5-8029-4b0a-bd5c-63f2a9feb4eb",
+      "name": "Prepare Data for Sentiment Analysis"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "role": "system",
+              "content": "==You are an expert at analyzing cold email replies and categorizing prospect interest levels.\n\nAnalyze the email reply and categorize it into ONE of these categories:\n\n1. POSITIVE: They're interested, want to learn more, asked questions, requested a call/meeting, or expressed clear interest\n2. NEUTRAL: Polite but non-committal, asked to follow up later, general acknowledgment, or needs more information\n3. NEGATIVE: Not interested, asked to stop contacting, or clearly declined\n4. UNSUBSCRIBE: Explicitly requested to unsubscribe or stop all contact (phrases like \"unsubscribe\", \"remove me\", \"stop emailing\", \"don't contact\", \"take me off your list\")\n5. OUT_OF_OFFICE: Automated out-of-office reply (look for phrases like \"I am currently out of office\", \"on vacation\", \"automatic reply\")\n\nAlso provide:\n- A brief 1-sentence summary of their response\n- Whether Michael needs to take immediate follow-up action\n\nOutput ONLY valid JSON with this exact structure:\n{\n  \"sentiment\": \"POSITIVE\" or \"NEUTRAL\" or \"NEGATIVE\" or \"UNSUBSCRIBE\" or \"OUT_OF_OFFICE\",\n  \"summary\": \"One sentence summary of their reply\",\n  \"needs_followup\": true or false\n}\n\nExamples:\n- \"Yes, I'd love to discuss this next week\" → POSITIVE, needs_followup: true\n- \"Thanks, but we're not interested right now\" → NEGATIVE, needs_followup: false\n- \"Can you send more information?\" → NEUTRAL, needs_followup: true\n- \"Please unsubscribe me\" → UNSUBSCRIBE, needs_followup: false\n- \"Remove me from your list\" → UNSUBSCRIBE, needs_followup: false\n- \"I am out of office until Feb 1st\" → OUT_OF_OFFICE, needs_followup: false"
+            },
+            {
+              "content": "=Analyze this reply:\n\nFrom: {{ $json.contact_name }} ({{ $json.sender_name }})\nCompany: {{ $json.company_name }}\nIndustry: {{ $json.industry }}\n\nSubject: {{ $json.reply_subject }}\n\nReply:\n{{ $json.reply_body }}\n\nCategorize their interest level and provide a brief summary.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [-192, 1216],
+      "id": "e5b81d29-25d7-4878-b810-669704876bdf",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const leadData = item.json;\n  \n  // Extract AI output\n  let aiOutput;\n  if (leadData.output && Array.isArray(leadData.output)) {\n    if (leadData.output[0]?.content?.[0]?.text) {\n      aiOutput = leadData.output[0].content[0].text;\n    } else if (leadData.output[0]?.text) {\n      aiOutput = leadData.output[0].text;\n    }\n  } else if (leadData.text) {\n    aiOutput = leadData.text;\n  }\n  \n  // Clean JSON markers\n  let cleanJson = aiOutput\n    .replace(/```json\\n?/gi, '')\n    .replace(/```\\n?/g, '')\n    .replace(/^[^{]*/g, '')\n    .replace(/[^}]*$/g, '')\n    .trim();\n  \n  // Parse AI response\n  let sentimentData;\n  try {\n    sentimentData = JSON.parse(cleanJson);\n    \n    // Validate sentiment value\n    const validSentiments = ['POSITIVE', 'NEUTRAL', 'NEGATIVE', 'UNSUBSCRIBE', 'OUT_OF_OFFICE'];\n    if (!validSentiments.includes(sentimentData.sentiment)) {\n      throw new Error('Invalid sentiment value');\n    }\n    \n  } catch (e) {\n    console.log(`⚠️ AI parsing failed for ${leadData.company_name}: ${e.message}`);\n    console.log(`Raw AI output: ${aiOutput.substring(0, 200)}`);\n    \n    // Fallback to neutral\n    sentimentData = {\n      sentiment: 'NEUTRAL',\n      summary: 'Reply received - manual review needed (AI parsing failed)',\n      needs_followup: true\n    };\n  }\n  \n  // Format date for Google Sheets\n  const now = new Date();\n  const replyDate = now.toISOString().replace('T', ' ').substring(0, 19);\n  \n  results.push({\n    json: {\n      business_email: leadData.business_email,\n      company_name: leadData.company_name,\n      contact_name: leadData.contact_name,\n      reply_date: replyDate,\n      reply_sentiment: sentimentData.sentiment,\n      reply_summary: sentimentData.summary,\n      needs_followup: sentimentData.needs_followup,\n      \n      // Keep reply content for reference\n      reply_subject: leadData.reply_subject,\n      reply_body: leadData.reply_body\n    }\n  });\n  \n  console.log(`📊 ${leadData.company_name}:`);\n  console.log(`   Sentiment: ${sentimentData.sentiment}`);\n  console.log(`   Summary: \"${sentimentData.summary}\"`);\n  console.log(`   Needs Follow-up: ${sentimentData.needs_followup}`);\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [160, 1216],
+      "id": "adc3aeab-508a-44d0-bc00-ab12c89c7275",
+      "name": "Parse Sentiment & Prepare Update"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Business email ": "={{ $('Prepare Data for Sentiment Analysis').item.json.business_email }}",
+            "Reply Date": "={{ $json.reply_date }}",
+            "Reply Sentiment": "={{ $json.reply_sentiment }}",
+            "Reply Summary": "={{ $json.reply_summary }}"
+          },
+          "matchingColumns": ["Business email "],
+          "schema": [
+            {
+              "id": "Company name",
+              "displayName": "Company name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Company website",
+              "displayName": "Company website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Industry / niche",
+              "displayName": "Industry / niche",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Number of employees",
+              "displayName": "Number of employees",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Country",
+              "displayName": "Country",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contact person full name",
+              "displayName": "Contact person full name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Job title",
+              "displayName": "Job title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Business email ",
+              "displayName": "Business email ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "LinkedIn profile URL ",
+              "displayName": "LinkedIn profile URL ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "LinkedIn company page URL",
+              "displayName": "LinkedIn company page URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Qualification score",
+              "displayName": "Qualification score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Score reasoning",
+              "displayName": "Score reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Contacted",
+              "displayName": "Contacted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 1  Sent Date",
+              "displayName": "Email 1  Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 2 Sent Date",
+              "displayName": "Email 2 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Email 3 Sent Date",
+              "displayName": "Email 3 Sent Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "Reply Date",
+              "displayName": "Reply Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Reply Sentiment",
+              "displayName": "Reply Sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Reply Summary",
+              "displayName": "Reply Summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "row_number",
+              "displayName": "row_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "readOnly": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [368, 1216],
+      "id": "3a187743-b31c-4ff5-9b1b-800b2eb9344e",
+      "name": "Update Reply Status",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a2d4bd47-d698-400d-86fb-ccc3bc4fbbd6",
+              "leftValue": "={{ $json['Reply Sentiment'] }}",
+              "rightValue": "POSITIVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [608, 1216],
+      "id": "154351a1-d230-40f4-825b-f0666853a32c",
+      "name": "Is Reply Positive?"
+    },
+    {
+      "parameters": {
+        "sendTo": "user@example.com",
+        "subject": "=🎉 Positive Reply from {{ $('Get row(s) in sheet').item.json['Company name'] }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px;\">      <h2 style=\"color: #28a745; margin-bottom: 20px;\">🎉 Great News! You Got a Positive Reply</h2>      <div style=\"background-color: white; padding: 20px; border-radius: 6px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #333;\">Lead Details</h3>     <p><strong>Company:</strong> {{ $('Get row(s) in sheet').item.json['Company name'] }}</p>     <p><strong>Contact:</strong> {{ $('Get row(s) in sheet').item.json['Contact person full name'] }}</p>     <p><strong>Email:</strong> <a href=\"mailto:{{ $('Get row(s) in sheet').item.json['Business email '] }}\">{{ $('Get row(s) in sheet').item.json['Business email '] }}</a></p>   </div>      <div style=\"background-color: #fffbf0; padding: 20px; border-left: 4px solid #ffc107; border-radius: 6px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #333;\">Their Response</h3>     <p style=\"font-style: italic; color: #555;\">\"{{ $json['Reply Summary'] }}\"</p>   </div>      <div style=\"background-color: #fff3cd; padding: 15px; border-radius: 6px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #333;\">Subject Line</h3>     <p style=\"margin: 0; color: #555;\">{{ $('Extract Reply Details').item.json.subject }}</p>   </div>      <div style=\"background-color: #f8f9fa; padding: 15px; border-radius: 6px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #333;\">Full Reply</h3>     <p style=\"white-space: pre-wrap; color: #555; font-size: 14px;\">{{ $('Extract Reply Details').item.json.body }}</p>   </div>      <div style=\"background-color: #d4edda; padding: 15px; border-radius: 6px; text-align: center;\">     <p style=\"margin: 0; font-weight: bold; color: #155724;\">⚡ ACTION REQUIRED: Reply to this lead ASAP!</p>     <p style=\"margin: 10px 0 0 0; font-size: 12px; color: #155724;\">Check your inbox for their message and respond promptly.</p>   </div>      <hr style=\"margin: 30px 0; border: none; border-top: 1px solid #e0e0e0;\">      <p style=\"font-size: 12px; color: #999; text-align: center; margin: 0;\">     <em>This is an automated notification from your ObiunDigital lead outreach system.</em>   </p>    </div>",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Lead Outreach System"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [832, 1200],
+      "id": "4857891a-6635-4289-8a97-047b68d1d2f9",
+      "name": "Notify Michael of Positive Reply",
+      "webhookId": "01374faf-988d-4220-9abb-32ed91b3d4a3",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconsole.log('');\nconsole.log('═══════════════════════════════════════════════════');\nconsole.log('📈 REPLY DETECTION - ACTIVITY LOG');\nconsole.log('═══════════════════════════════════════════════════');\n\nfor (const item of items) {\n  const lead = item.json;\n  \n  console.log('');\n  console.log(`📧 Company: ${lead.company_name}`);\n  console.log(`👤 Contact: ${lead.contact_name}`);\n  console.log(`📩 Email: ${lead.business_email}`);\n  console.log(`📅 Reply Date: ${lead.reply_date}`);\n  console.log(`💬 Sentiment: ${lead.reply_sentiment}`);\n  console.log(`📝 Summary: ${lead.reply_summary}`);\n  console.log(`⚡ Needs Follow-up: ${lead.needs_followup ? 'YES' : 'NO'}`);\n  console.log(`📧 Subject: ${lead.reply_subject}`);\n  console.log(`📄 Body Preview: ${(lead.reply_body || '').substring(0, 150)}...`);\n  console.log('---------------------------------------------------');\n}\n\nconsole.log('');\nconsole.log(`✅ Total Replies Processed: ${items.length}`);\nconsole.log('═══════════════════════════════════════════════════');\nconsole.log('');\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 1200],
+      "id": "4608b76a-1a07-4009-86e5-4cd1faefea23",
+      "name": "Log Reply Stats"
+    },
+    {
+      "parameters": {
+        "content": "## REPLY DETECTION & SENTIMENT ANALYSIS",
+        "height": 512,
+        "width": 2688,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1408, 1056],
+      "id": "f22d255b-92db-4006-bd0d-dbd31f4f6bf8",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [-1296, 1904],
+      "id": "96ba0f51-3155-4f61-926d-1bd66dc3a4dd",
+      "name": "Workflow Errors"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nfor (const item of items) {\n  const error = item.json;\n  \n  // Extract error information\n  const errorNode = error.node?.name || 'Unknown Node';\n  const errorMessage = error.error?.message || error.message || 'Unknown error';\n  const errorStack = error.error?.stack || '';\n  const errorCode = error.error?.code || '';\n  const timestamp = new Date().toISOString();\n  \n  // Try to get lead information if available\n  let leadInfo = 'N/A';\n  let companyName = 'N/A';\n  let leadEmail = 'N/A';\n  \n  try {\n    if (error.json?.company_name) {\n      companyName = error.json.company_name;\n      leadEmail = error.json.business_email || 'N/A';\n      leadInfo = `${companyName} (${leadEmail})`;\n    } else if (error.json?.['Company name']) {\n      companyName = error.json['Company name'];\n      leadEmail = error.json['Business email '] || error.json['Business email'] || 'N/A';\n      leadInfo = `${companyName} (${leadEmail})`;\n    }\n  } catch (e) {\n    // Lead info not available\n  }\n  \n  // Determine severity based on error type\n  let severity = 'MEDIUM';\n  if (errorNode.includes('Send Email')) {\n    severity = 'HIGH'; // Email sending failures are critical\n  } else if (errorNode.includes('OpenAI') || errorNode.includes('Generate')) {\n    severity = 'HIGH'; // AI failures affect campaign quality\n  } else if (errorNode.includes('Google Sheets')) {\n    severity = 'MEDIUM'; // Data sync issues\n  }\n  \n  // Determine error category\n  let errorCategory = 'UNKNOWN';\n  if (errorMessage.includes('quota') || errorMessage.includes('limit')) {\n    errorCategory = 'QUOTA_EXCEEDED';\n  } else if (errorMessage.includes('authentication') || errorMessage.includes('credential')) {\n    errorCategory = 'AUTH_FAILED';\n  } else if (errorMessage.includes('network') || errorMessage.includes('timeout')) {\n    errorCategory = 'NETWORK_ERROR';\n  } else if (errorMessage.includes('parse') || errorMessage.includes('JSON')) {\n    errorCategory = 'DATA_PARSING';\n  }\n  \n  console.log('🚨 ═══════════════════════════════════════════════════');\n  console.log('🚨 ERROR DETECTED IN WORKFLOW');\n  console.log('🚨 ═══════════════════════════════════════════════════');\n  console.log(`⏰ Time: ${timestamp}`);\n  console.log(`📍 Node: ${errorNode}`);\n  console.log(`🏢 Lead: ${leadInfo}`);\n  console.log(`⚠️ Category: ${errorCategory}`);\n  console.log(`🔴 Severity: ${severity}`);\n  console.log(`❌ Error: ${errorMessage}`);\n  if (errorCode) console.log(`📋 Code: ${errorCode}`);\n  console.log('🚨 ═══════════════════════════════════════════════════');\n  \n  results.push({\n    json: {\n      error_type: 'WORKFLOW_ERROR',\n      error_node: errorNode,\n      error_message: errorMessage,\n      error_code: errorCode,\n      error_category: errorCategory,\n      error_stack: errorStack.substring(0, 1000), // First 1000 chars\n      lead_company: companyName,\n      lead_email: leadEmail,\n      lead_info: leadInfo,\n      timestamp: timestamp,\n      workflow: 'Phase 2 - Lead Outreach Campaign',\n      severity: severity,\n      date: new Date().toISOString().split('T')[0]\n    }\n  });\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1088, 1904],
+      "id": "f649a3eb-d774-4e45-82e0-faabd758a815",
+      "name": "Parse Error Details"
+    },
+    {
+      "parameters": {
+        "sendTo": "user@example.com",
+        "subject": "=⚠️ System Error - {{ $json.error_category }} in {{ $json.error_node }}",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background-color: #fff3cd; border: 3px solid #ff6b6b; border-radius: 10px;\">      <div style=\"text-align: center; padding: 20px; background-color: #d32f2f; color: white; border-radius: 8px; margin-bottom: 20px;\">     <h1 style=\"margin: 0; font-size: 28px;\">⚠️ System Error Detected</h1>     <p style=\"margin: 10px 0 0 0; font-size: 14px;\">Lead Outreach Workflow - Phase 2</p>   </div>      <div style=\"background-color: white; padding: 25px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #d32f2f;\">     <h2 style=\"margin-top: 0; color: #333; font-size: 20px;\">📋 Error Summary</h2>     <table style=\"width: 100%; border-collapse: collapse;\">       <tr>         <td style=\"padding: 8px; font-weight: bold; width: 140px;\">Timestamp:</td>         <td style=\"padding: 8px; color: #555;\">{{ $json.timestamp }}</td>       </tr>       <tr style=\"background-color: #f8f9fa;\">         <td style=\"padding: 8px; font-weight: bold;\">Failed Node:</td>         <td style=\"padding: 8px; color: #555;\">{{ $json.error_node }}</td>       </tr>       <tr>         <td style=\"padding: 8px; font-weight: bold;\">Error Type:</td>         <td style=\"padding: 8px; color: #555;\">{{ $json.error_category }}</td>       </tr>       <tr style=\"background-color: #f8f9fa;\">         <td style=\"padding: 8px; font-weight: bold;\">Severity:</td>         <td style=\"padding: 8px;\">           <span style=\"background-color: {{ $json.severity === 'HIGH' ? '#d32f2f' : '#f57c00' }}; color: white; padding: 4px 12px; border-radius: 12px; font-weight: bold; font-size: 13px;\">             {{ $json.severity }}           </span>         </td>       </tr>     </table>   </div>      <div style=\"background-color: #ffebee; padding: 20px; border-radius: 8px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #c62828; font-size: 18px;\">💬 Error Message</h3>     <p style=\"color: #555; font-family: 'Courier New', monospace; background-color: white; padding: 15px; border-radius: 6px; font-size: 13px; line-height: 1.6; margin: 0;\">{{ $json.error_message }}</p>   </div>      <div style=\"background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;\">     <h3 style=\"margin-top: 0; color: #333; font-size: 18px;\">🏢 Affected Lead</h3>     <p style=\"margin: 5px 0;\"><strong>Company:</strong> {{ $json.lead_company }}</p>     <p style=\"margin: 5px 0;\"><strong>Email:</strong> {{ $json.lead_email }}</p>   </div>      <div style=\"background-color: #fff9c4; padding: 20px; border-radius: 8px; text-align: center; border: 2px dashed #f57f17;\">     <p style=\"margin: 0; font-weight: bold; color: #e65100; font-size: 16px;\">⚡ ACTION REQUIRED</p>     <p style=\"margin: 10px 0 0 0; color: #666; font-size: 14px;\">       Check your n8n workflow and resolve the issue.<br>       The workflow will continue attempting to process other leads.     </p>   </div>      <div style=\"background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 20px;\">     <h4 style=\"margin: 0 0 10px 0; color: #1565c0; font-size: 16px;\">🔧 Common Fixes:</h4>     <ul style=\"margin: 0; padding-left: 20px; color: #555; font-size: 14px;\">       <li><strong>QUOTA_EXCEEDED:</strong> Check OpenAI/Gmail API limits</li>       <li><strong>AUTH_FAILED:</strong> Reconnect OAuth credentials in n8n</li>       <li><strong>NETWORK_ERROR:</strong> Temporary issue - workflow will retry</li>       <li><strong>DATA_PARSING:</strong> Check Google Sheets data format</li>     </ul>   </div>      <hr style=\"margin: 30px 0; border: none; border-top: 1px solid #ddd;\">      <p style=\"font-size: 12px; color: #999; text-align: center; margin: 0;\">     <em>Automated error notification from ObiunDigital Lead Outreach System</em><br>     <span style=\"font-size: 11px;\">Error ID: {{ $json.timestamp }}</span>   </p>    </div>",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "n8n Error Monitor"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [-848, 1904],
+      "id": "4f38edde-d86c-4401-8522-7cd2435f1df2",
+      "name": "Notify Michael of Error",
+      "webhookId": "58d351da-fa8d-4fed-885d-67ec4c514011",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nfor (const item of items) {\n  const error = item.json;\n  \n  // Detailed error logging for debugging\n  console.log('');\n  console.log('╔═══════════════════════════════════════════════════════════╗');\n  console.log('║              ERROR LOG - PERMANENT RECORD                 ║');\n  console.log('╚═══════════════════════════════════════════════════════════╝');\n  console.log('');\n  console.log(`📅 Date:           ${error.date}`);\n  console.log(`⏰ Timestamp:      ${error.timestamp}`);\n  console.log(`📂 Workflow:       ${error.workflow}`);\n  console.log(`📍 Failed Node:    ${error.error_node}`);\n  console.log(`⚠️  Error Category: ${error.error_category}`);\n  console.log(`🔴 Severity:       ${error.severity}`);\n  console.log('');\n  console.log('🏢 AFFECTED LEAD:');\n  console.log(`   Company:        ${error.lead_company}`);\n  console.log(`   Email:          ${error.lead_email}`);\n  console.log('');\n  console.log('💬 ERROR MESSAGE:');\n  console.log(`   ${error.error_message}`);\n  console.log('');\n  if (error.error_code) {\n    console.log('📋 ERROR CODE:');\n    console.log(`   ${error.error_code}`);\n    console.log('');\n  }\n  console.log('📚 STACK TRACE (truncated):');\n  console.log(error.error_stack);\n  console.log('');\n  console.log('═══════════════════════════════════════════════════════════');\n  console.log('');\n}\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-640, 1904],
+      "id": "cf4259f5-5f1f-4e72-ac9a-c0759c8734f1",
+      "name": "n8n Error Monitor"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Math.floor(Math.random() * 6) + 5 }}",
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [48, 496],
+      "id": "8fe259d1-fa79-4e39-a32d-c1243fecb851",
+      "name": "Random Delay (5-10 minutes)1",
+      "webhookId": "3d06f8aa-913f-472f-954a-762f7bfaef41"
+    },
+    {
+      "parameters": {
+        "content": "## ERROR HANDLING & MONITORING",
+        "height": 352,
+        "width": 1088,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1392, 1728],
+      "id": "ec78b389-6f52-4da9-b06f-a9d091f9918a",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1xZWORo7S2IjqXRqf3hw2H17mm6qUgIC7lcX2tmiq6Q0",
+          "mode": "list",
+          "cachedResultName": "Qualified Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads sheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Business email ",
+              "lookupValue": "={{ $json.sender_email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-832, 1312],
+      "id": "3b251661-2c96-4d0e-b9e4-f105d7faf063",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\n// GDPR-compliant unsubscribe footer (properly formatted)\nconst unsubscribeFooter = '\\n\\n---\\n\\nIf you\\'d prefer not to hear from us again, simply reply with \\'unsubscribe\\' and I\\'ll remove you immediately.';\n\nfor (const item of items) {\n  results.push({\n    json: {\n      ...item.json,\n      email_body: item.json.email_body + unsubscribeFooter\n    }\n  });\n}\n\nconsole.log(`✅ Added unsubscribe footer to ${results.length} Email 1 messages`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [336, 160],
+      "id": "b520be07-0667-4973-bfdc-470691b22bfb",
+      "name": "Add Unsubscribe Footer to Email 1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\n// GDPR-compliant unsubscribe footer\nconst unsubscribeFooter = '\\n\\n---\\n\\nIf you\\'d prefer not to hear from us again, simply reply with \\'unsubscribe\\' and I\\'ll remove you immediately.';\n\nfor (const item of items) {\n  results.push({\n    json: {\n      ...item.json,\n      email_body: item.json.email_body + unsubscribeFooter\n    }\n  });\n}\n\nconsole.log(`✅ Added unsubscribe footer to ${results.length} Email 2 messages`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-144, 496],
+      "id": "51923442-8b01-4641-8702-a2a3b3564401",
+      "name": "Add Unsubscribe Footer to Email 2"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst results = [];\n\n// GDPR-compliant unsubscribe footer\nconst unsubscribeFooter = '\\n\\n---\\n\\nIf you\\'d prefer not to hear from us again, simply reply with \\'unsubscribe\\' and I\\'ll remove you immediately.';\n\nfor (const item of items) {\n  results.push({\n    json: {\n      ...item.json,\n      email_body: item.json.email_body + unsubscribeFooter\n    }\n  });\n}\n\nconsole.log(`✅ Added unsubscribe footer to ${results.length} Email 3 messages`);\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [64, 704],
+      "id": "e77fef81-cebd-4476-9dd2-631d3a7d97fe",
+      "name": "Add Unsubscribe Footer to Email 3"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [-816, 80],
+      "id": "96f83f74-52af-4fe3-891d-1f470e3a4d15",
+      "name": "Loop Over Items",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday\n\n// Only run Monday-Friday (1-5)\nif (dayOfWeek >= 1 && dayOfWeek <= 5) {\n  console.log(`✅ Weekday (${dayOfWeek}) - Proceeding with campaign`);\n  return [{ json: { proceed: true } }];\n} else {\n  console.log(`⏸️ Weekend (${dayOfWeek}) - Skipping campaign`);\n  return []; // Return empty array to stop the workflow\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1712, 80],
+      "id": "e11e3d12-9d3e-4ebf-9030-ec04e07b5d8b",
+      "name": "Skip Weekends"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\nconst dayOfWeek = now.getDay(); // 0 = Sunday, 6 = Saturday\n\n// Only run Monday-Friday (1-5)\nif (dayOfWeek >= 1 && dayOfWeek <= 5) {\n  console.log(`✅ Weekday (${dayOfWeek}) - Proceeding with campaign`);\n  return [{ json: { proceed: true } }];\n} else {\n  console.log(`⏸️ Weekend (${dayOfWeek}) - Skipping campaign`);\n  return []; // Return empty array to stop the workflow\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-1344, 496],
+      "id": "13d1fe11-b76d-4576-8e48-147ff1059909",
+      "name": "Skip Weekends - Follow-ups"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Daily 9AM Campaign": {
+      "main": [
+        [
+          {
+            "node": "Skip Weekends",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Leads": {
+      "main": [
+        [
+          {
+            "node": "Cap at 10 Daily",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Cap at 10 Daily": {
+      "main": [
+        [
+          {
+            "node": "Randomize Lead Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Randomize Lead Order": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Prepare Lead Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Email 1": {
+      "main": [
+        [
+          {
+            "node": "Parse AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Random Delay (5-10 minutes)": {
+      "main": [
+        [
+          {
+            "node": "Validate Business Hours - Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email 1": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Sheet Update Data": {
+      "main": [
+        [
+          {
+            "node": "Update Contacted Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Contacted Status": {
+      "main": [
+        [
+          {
+            "node": "Daily Stats Logger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI": {
+      "main": [
+        [
+          {
+            "node": "Add Unsubscribe Footer to Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 10AM Follow-up Check": {
+      "main": [
+        [
+          {
+            "node": "Skip Weekends - Follow-ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch All Contacted Leads": {
+      "main": [
+        [
+          {
+            "node": "Check Who Needs Email 2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Check Who Needs Email 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Who Needs Email 2": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Email 2": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Email 2 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Email 2 Response": {
+      "main": [
+        [
+          {
+            "node": "Add Unsubscribe Footer to Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email 2 Sheet Update": {
+      "main": [
+        [
+          {
+            "node": "Update Email 2 Sent Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Who Needs Email 3": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email 3 Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email 3 Data": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Email 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Email 3 Response": {
+      "main": [
+        [
+          {
+            "node": "Add Unsubscribe Footer to Email 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Random Delay (5-10 minutes)2": {
+      "main": [
+        [
+          {
+            "node": "Validate Business Hours - Email 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email 3": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email 3 Sheet Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Email 3 Sheet Update": {
+      "main": [
+        [
+          {
+            "node": "Update Email 3 Sent Date",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Email 2 Sent Date": {
+      "main": [[]]
+    },
+    "Send Email 2": {
+      "main": [
+        [
+          {
+            "node": "Prepare Email 2 Sheet Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Email 3 Sent Date": {
+      "main": [
+        [
+          {
+            "node": "Email 3 Stats Logger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Email 3": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Email 3 Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business Hours - Email 1": {
+      "main": [
+        [
+          {
+            "node": "Send Email 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business Hours - Email 2": {
+      "main": [
+        [
+          {
+            "node": "Send Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business Hours - Email 3": {
+      "main": [
+        [
+          {
+            "node": "Send Email 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Email Received": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply Details": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Is This a Lead Reply?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data for Sentiment Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data for Sentiment Analysis": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Parse Sentiment & Prepare Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Sentiment & Prepare Update": {
+      "main": [
+        [
+          {
+            "node": "Update Reply Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Reply Status": {
+      "main": [
+        [
+          {
+            "node": "Is Reply Positive?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Reply Positive?": {
+      "main": [
+        [
+          {
+            "node": "Notify Michael of Positive Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Michael of Positive Reply": {
+      "main": [
+        [
+          {
+            "node": "Log Reply Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Errors": {
+      "main": [
+        [
+          {
+            "node": "Parse Error Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Error Details": {
+      "main": [
+        [
+          {
+            "node": "Notify Michael of Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Michael of Error": {
+      "main": [
+        [
+          {
+            "node": "n8n Error Monitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Random Delay (5-10 minutes)1": {
+      "main": [
+        [
+          {
+            "node": "Validate Business Hours - Email 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "IF - Is This a Lead Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Unsubscribe Footer to Email 1": {
+      "main": [
+        [
+          {
+            "node": "Random Delay (5-10 minutes)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Unsubscribe Footer to Email 2": {
+      "main": [
+        [
+          {
+            "node": "Random Delay (5-10 minutes)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Unsubscribe Footer to Email 3": {
+      "main": [
+        [
+          {
+            "node": "Random Delay (5-10 minutes)2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Prepare Sheet Update Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract & Prepare Lead Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Weekends": {
+      "main": [
+        [
+          {
+            "node": "Fetch All Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Skip Weekends - Follow-ups": {
+      "main": [
+        [
+          {
+            "node": "Fetch All Contacted Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "f5848859-13b8-40f0-961f-ae24438d773f",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "754cfcc80730aec1551897910a5ec369f711d38292548fdc54e991e4ce30df54"
+  },
+  "id": "UDMuAuMYW2XbjIN5",
+  "tags": []
+}

@@ -1,0 +1,3733 @@
+{
+  "name": "Twitter Stream Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "twitter-stream-monitor",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -944,
+        144
+      ],
+      "id": "80671ad3-078a-4bf8-be69-05ce8a61f8b9",
+      "name": "Twitter Stream Webhook",
+      "webhookId": "0d06ff65-5be8-4dea-93c2-5e854a248503"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get input data - headers are inside json!\nconst data = $input.item.json;\nconst body = data.body || data;\nconst headers = data.headers || {};\n\n// Your TwitterAPI.io API key\nconst EXPECTED_API_KEY: \"YOUR_API_KEY\";\n\nconsole.log('📋 Checking API key...');\n\n// Get API key from headers\nconst receivedApiKey = headers['x-api-key'];\n\nif (!receivedApiKey) {\n  console.log('❌ No API key found in headers');\n  throw new Error('No API key found in request');\n}\n\nif (receivedApiKey !== EXPECTED_API_KEY) {\n  console.log(`❌ Invalid API key: got \"${receivedApiKey}\"`);\n  throw new Error('Invalid API key');\n}\n\nconsole.log('✅ Valid webhook request from TwitterAPI.io');\nconsole.log(`📥 Event: ${body.eventtype || body.event_type}`);\nconsole.log(`📥 Rule: ${body.ruletag || body.rule_tag}`);\nconsole.log(`📥 Tweets: ${body.tweets?.length || 0}`);\n\n// Pass through the BODY only (not the headers wrapper)\nreturn [{\n  json: body\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -736,
+        144
+      ],
+      "id": "aa8bdf8a-d18e-4b63-b97d-efab427ae2f2",
+      "name": "Validate API Key"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json;\n\n// Check event type\nif (body.eventtype !== 'tweet' && body.event_type !== 'tweet') {\n  console.log('⚠️ Non-tweet event, skipping');\n  return [];\n}\n\nconst tweets = body.tweets || [];\nconst ruleTag = body.ruletag || body.rule_tag || 'unknown';\n\nconsole.log(`📥 Processing ${tweets.length} tweets from rule \"${ruleTag}\"`);\n\nif (tweets.length === 0) {\n  console.log('No tweets in webhook payload');\n  return [];\n}\n\n// Normalize each tweet to match your existing workflow format\nreturn tweets.map(tweet => ({\n  json: {\n    // Keep all original TwitterAPI.io fields\n    ...tweet,\n    \n    // Normalize date field (ensure consistency)\n    createdAt: tweet.created_at || tweet.createdAt,\n    \n    // Normalize reply fields\n    isReply: tweet.is_reply || tweet.isReply || !!tweet.inReplyToId || !!tweet.in_reply_to_status_id,\n    inReplyToId: tweet.inReplyToId || tweet.in_reply_to_status_id || null,\n    inReplyToUsername: tweet.inReplyToUsername || tweet.in_reply_to_screen_name || null,\n    \n    // Add webhook metadata\n    webhook_source: ruleTag,\n    webhook_timestamp: body.timestamp\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -528,
+        144
+      ],
+      "id": "7aa1de1b-4031-405b-b38c-058da2194a30",
+      "name": "Normalize Webhook Tweets"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tweets = $input.all();\nconst apiKey: \"YOUR_API_KEY\";\n\nconsole.log(`Processing ${tweets.length} tweets for reply enrichment`);\n\n// Collect all reply IDs first\nconst replyIds = [];\nconst tweetMap = {};\n\ntweets.forEach(item => {\n  const tweet = item.json;\n  tweetMap[tweet.id] = tweet;\n  \n  if (tweet.isReply && tweet.inReplyToId) {\n    replyIds.push(tweet.inReplyToId);\n  }\n});\n\nconsole.log(`Found ${replyIds.length} replies to fetch`);\n\n// BATCH FETCH: Get up to 100 tweets per API call\nconst BATCH_SIZE = 100;\nconst originalTweets = {};\n\nfor (let i = 0; i < replyIds.length; i += BATCH_SIZE) {\n  const batch = replyIds.slice(i, i + BATCH_SIZE);\n  const batchIds = batch.join(',');\n  \n  console.log(`Fetching batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batch.length} tweets`);\n  \n  try {\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url: `https://api.twitterapi.io/twitter/tweets?tweet_ids=${batchIds}`,\n      headers: {\n        'X-API-Key': apiKey,\n        'Accept': 'application/json'\n      },\n      json: true\n    });\n    \n    // Store fetched tweets by ID\n    if (response.tweets) {\n      response.tweets.forEach(t => {\n        originalTweets[t.id] = t;\n      });\n    }\n    \n    console.log(`✅ Fetched ${response.tweets?.length || 0} original tweets`);\n    \n    // Rate limit: wait 1 second between batches\n    if (i + BATCH_SIZE < replyIds.length) {\n      await new Promise(resolve => setTimeout(resolve, 1000));\n    }\n    \n  } catch (error) {\n    console.log(`⚠️ Batch fetch failed: ${error.message}`);\n  }\n}\n\n// Now enrich all tweets\nconst enrichedTweets = tweets.map(item => {\n  const tweet = item.json;\n  \n  if (tweet.isReply && tweet.inReplyToId) {\n    const originalTweet = originalTweets[tweet.inReplyToId];\n    \n    if (originalTweet) {\n      return {\n        json: {\n          ...tweet,\n          original_tweet_id: originalTweet.id,\n          original_author_username: originalTweet.author?.userName || '',\n          original_tweet_url: originalTweet.url || originalTweet.twitterUrl,\n          original_full_text: originalTweet.text || ''\n        }\n      };\n    } else {\n      return {\n        json: {\n          ...tweet,\n          original_tweet_id: tweet.inReplyToId,\n          original_author_username: tweet.inReplyToUsername,\n          original_tweet_url: `https://twitter.com/${tweet.inReplyToUsername}/status/${tweet.inReplyToId}`,\n          original_full_text: '(Original tweet not found)'\n        }\n      };\n    }\n  }\n  \n  // Not a reply\n  return {\n    json: {\n      ...tweet,\n      original_tweet_id: '',\n      original_author_username: '',\n      original_tweet_url: '',\n      original_full_text: ''\n    }\n  };\n});\n\nconsole.log(`✅ Enriched ${enrichedTweets.length} tweets`);\nreturn enrichedTweets;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        144
+      ],
+      "id": "18365328-601f-410e-aaa2-5f9c797e7435",
+      "name": "Fetch Original Tweets for Replies"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tweets = $input.all();\n\nconsole.log(`Formatting ${tweets.length} tweets for Google Sheets`);\n\nreturn tweets.map(item => {\n  const tweet = item.json;\n  \n  // Extract media URLs\n  const mediaUrls = [];\n  if (tweet.extendedEntities?.media) {\n    tweet.extendedEntities.media.forEach(m => {\n      if (m.mediaurlhttps || m.media_url_https) {\n        mediaUrls.push(m.mediaurlhttps || m.media_url_https);\n      }\n    });\n  }\n  \n  // Safe extraction\n  const authorUsername = tweet.author?.userName || tweet.userName || 'unknown';\n  \n  // Construct Drive folder URL (if media exists)\n  const driveFolderUrl = mediaUrls.length > 0 \n    ? 'https://drive.google.com/drive/folders/YOUR_FOLDER_ID' \n    : '';\n  \n  return {\n    json: {\n      tweet_id: tweet.id,\n      created_at: tweet.createdAt,\n      author_username: authorUsername,\n      tweet_url: tweet.url || tweet.twitterUrl,\n      full_text: tweet.text,\n      is_reply: tweet.isReply ? 'TRUE' : 'FALSE',\n      reply_to_tweet_id: tweet.inReplyToId || '',\n      reply_to_username: tweet.inReplyToUsername || '',\n      original_tweet_id: tweet.original_tweet_id || '',\n      original_author_username: tweet.original_author_username || '',\n      original_tweet_url: tweet.original_tweet_url || '',\n      original_full_text: tweet.original_full_text || '',\n      // NEW: Quote tweet fields\n      is_quote: tweet.quoted_tweet_id ? 'TRUE' : 'FALSE',\n      quoted_tweet_id: tweet.quoted_tweet_id || '',\n      quoted_author_username: tweet.quoted_author_username || '',\n      quoted_tweet_url: tweet.quoted_tweet_url || '',\n      quoted_full_text: tweet.quoted_full_text || '',\n      media_urls: mediaUrls.join(', '),\n      drive_folder_url: driveFolderUrl\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        144
+      ],
+      "id": "bda3fe19-7e0c-46c1-ac69-74b5dc3cac34",
+      "name": "Format Data for Sheets"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "06a27676-e542-4a6b-adaf-ce1fb07a9796",
+              "leftValue": "={{ $json.media_urls }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        144
+      ],
+      "id": "6d9de146-9ab1-4bc9-84b7-b2028f8cb6be",
+      "name": "Check if Media Exists"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tweets = $input.all();\n\nconsole.log(`Processing ${tweets.length} tweets with media`);\n\n// Process each tweet\nconst allMediaItems = [];\n\ntweets.forEach(item => {\n  const tweetData = item.json;\n  const mediaUrls = tweetData.media_urls;\n\n  // If no media, skip\n  if (!mediaUrls || mediaUrls.trim() === '') {\n    console.log(`⚠️ No media URLs for tweet ${tweetData.tweet_id}`);\n    return;\n  }\n\n  // Split comma-separated URLs into array\n  const urlArray = mediaUrls.split(',').map(url => url.trim()).filter(url => url);\n\n  console.log(`📸 Found ${urlArray.length} media files for tweet ${tweetData.tweet_id}`);\n\n  // Create one item per media URL\n  urlArray.forEach((url, index) => {\n    // Determine file extension from URL\n    let extension = '.jpg';\n    if (url.includes('.mp4')) extension = '.mp4';\n    if (url.includes('.png')) extension = '.png';\n    if (url.includes('.gif')) extension = '.gif';\n\n    allMediaItems.push({\n      json: {\n        ...tweetData,\n        media_url: url,\n        media_index: index + 1,\n        filename: `${tweetData.author_username}_${tweetData.tweet_id}_${index + 1}${extension}`\n      }\n    });\n  });\n});\n\nconsole.log(`✅ Total media items to download: ${allMediaItems.length}`);\n\nreturn allMediaItems;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        48
+      ],
+      "id": "b0c996d2-7f0a-496c-8d85-4ff126875932",
+      "name": "Split Media URLs into Array"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get data from both nodes\nconst uploadedFiles = $input.all(); // From Google Drive Upload\nconst downloadedFiles = $('Download Media File').all(); // From Download Media File node\n\nconsole.log(`Processing ${uploadedFiles.length} uploaded files`);\n\n// Create a map of index -> tweet data from Download Media File\nconst tweetDataMap = {};\ndownloadedFiles.forEach((item, index) => {\n  tweetDataMap[index] = item.json;\n});\n\n// Group by tweet_id\nconst grouped = {};\n\nuploadedFiles.forEach((item, index) => {\n  const driveFileId = item.json.id; // Google Drive file ID\n  const driveUrl = `https://drive.google.com/file/d/${driveFileId}/view`;\n  \n  // Get the original tweet data from Download Media File node\n  const tweetData = tweetDataMap[index];\n  \n  if (!tweetData) {\n    console.log(`⚠️ No tweet data found for index ${index}`);\n    return;\n  }\n  \n  const tweetId = tweetData.tweet_id;\n  \n  if (!grouped[tweetId]) {\n    grouped[tweetId] = {\n      tweet_id: tweetData.tweet_id,\n      created_at: tweetData.created_at,\n      author_username: tweetData.author_username,\n      tweet_url: tweetData.tweet_url,\n      full_text: tweetData.full_text,\n      is_reply: tweetData.is_reply,\n      reply_to_tweet_id: tweetData.reply_to_tweet_id || '',\n      reply_to_username: tweetData.reply_to_username || '',\n      original_tweet_id: tweetData.original_tweet_id || '',\n      original_author_username: tweetData.original_author_username || '',\n      original_tweet_url: tweetData.original_tweet_url || '',\n      original_full_text: tweetData.original_full_text || '',\n      // NEW: Quote tweet fields\n      is_quote: tweetData.is_quote || 'FALSE',\n      quoted_tweet_id: tweetData.quoted_tweet_id || '',\n      quoted_author_username: tweetData.quoted_author_username || '',\n      quoted_tweet_url: tweetData.quoted_tweet_url || '',\n      quoted_full_text: tweetData.quoted_full_text || '',\n      media_urls: tweetData.media_urls,\n      drive_file_paths: []\n    };\n  }\n  \n  grouped[tweetId].drive_file_paths.push(driveUrl);\n});\n\n// Return one item per tweet with all drive paths joined\nconst result = Object.values(grouped).map(tweet => ({\n  json: {\n    ...tweet,\n    drive_file_paths: tweet.drive_file_paths.join(', ')\n  }\n}));\n\nconsole.log(`✅ Grouped into ${result.length} tweets with Drive paths`);\nconsole.log(`Sample:`, JSON.stringify(result[0], null, 2));\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1232,
+        48
+      ],
+      "id": "579a3ef5-3b8d-4379-baae-7aaa34082c5a",
+      "name": "Collect Drive Paths per Tweet"
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.filename }}",
+        "driveId": {
+          "__rl": true,
+          "value": "My Drive",
+          "mode": "list",
+          "cachedResultName": "My Drive",
+          "cachedResultUrl": "https://drive.google.com/drive/my-drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1dMkz2p41j9PclOmZNW85zSXpGx7rJo51",
+          "mode": "list",
+          "cachedResultName": "Twitter Archive",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1dMkz2p41j9PclOmZNW85zSXpGx7rJo51"
+        },
+        "options": {
+          "simplifyOutput": false
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1008,
+        48
+      ],
+      "id": "faebc305-6941-4f1f-8438-eeea71ad63ac",
+      "name": "Upload to Google Drive",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst results = [];\n\nfor (const item of items) {\n  const url = item.json.media_url;\n  \n  if (!url) {\n    console.log('⚠️ No media_url found, skipping item');\n    continue;\n  }\n  \n  try {\n    console.log(`Downloading: ${url}`);\n    \n    // Download the file\n    const response = await this.helpers.httpRequest({\n      method: 'GET',\n      url: url,\n      returnFullResponse: true,\n      encoding: 'arraybuffer'\n    });\n    \n    // Determine mime type from response or URL\n    let mimeType = response.headers['content-type'] || 'image/jpeg';\n    \n    // response.body is already a Buffer when encoding is 'arraybuffer'\n    const binaryData = Buffer.isBuffer(response.body) \n      ? response.body \n      : Buffer.from(response.body);\n    \n    results.push({\n      json: {\n        // Keep ALL original tweet data (with underscores)\n        ...item.json\n      },\n      binary: {\n        data: {\n          data: binaryData.toString('base64'),\n          mimeType: mimeType,\n          fileName: item.json.filename,\n          fileExtension: item.json.filename.split('.').pop()\n        }\n      }\n    });\n    \n    console.log(`✅ Downloaded: ${item.json.filename} (${mimeType})`);\n  } catch (error) {\n    console.log(`❌ Failed to download ${url}: ${error.message}`);\n    // Still add the item so workflow can continue\n    results.push({\n      json: {\n        ...item.json,\n        download_error: error.message\n      }\n    });\n  }\n}\n\nconsole.log(`Total files processed: ${results.length}`);\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        48
+      ],
+      "id": "94de1787-cce7-4a26-ba76-73e976d107c1",
+      "name": "Download Media File"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1472,
+        144
+      ],
+      "id": "69a3da90-c35a-45bb-9330-a88a0f4821ab",
+      "name": "Merge Tweets (With & Without Media)"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1wCO_3eg9FPRHsEbFkuO786Ux-XvP7jew6ZCssO-U74A",
+          "mode": "list",
+          "cachedResultName": "Twitter Monitor - Data Archive",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Tweets",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_GOOGLE_SHEET_ID/edit"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tweet_id": "={{ $json.tweet_id }}",
+            "created_at": "={{ $json.created_at }}",
+            "author_username": "={{ $json.author_username }}",
+            "tweet_url": "={{ $json.tweet_url }}",
+            "full_text": "={{ $json.full_text }}",
+            "is_reply": "={{ $json.is_reply }}",
+            "reply_to_tweet_id": "={{ $json.reply_to_tweet_id }}",
+            "reply_to_username": "={{ $json.reply_to_username }}",
+            "original_tweet_id": "={{ $json.original_tweet_id }}",
+            "original_author_username": "={{ $json.original_author_username }}",
+            "original_tweet_url": "={{ $json.original_tweet_url }}",
+            "original_full_text": "={{ $json.original_full_text }}",
+            "media_urls": "={{ $json.media_urls }}",
+            "drive_file_paths": "={{ $json.drive_file_paths }}",
+            "quoted_tweet_id": "={{ $json.quoted_tweet_id }}",
+            "quoted_author_username": "={{ $json.quoted_author_username }}",
+            "quoted_tweet_url": "={{ $json.quoted_tweet_url }}",
+            "quoted_full_text": "={{ $json.quoted_full_text }}"
+          },
+          "matchingColumns": [
+            "tweet_id"
+          ],
+          "schema": [
+            {
+              "id": "tweet_id",
+              "displayName": "tweet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "author_username",
+              "displayName": "author_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tweet_url",
+              "displayName": "tweet_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "full_text",
+              "displayName": "full_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_reply",
+              "displayName": "is_reply",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reply_to_tweet_id",
+              "displayName": "reply_to_tweet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reply_to_username",
+              "displayName": "reply_to_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_tweet_id",
+              "displayName": "original_tweet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_author_username",
+              "displayName": "original_author_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_tweet_url",
+              "displayName": "original_tweet_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_full_text",
+              "displayName": "original_full_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quoted_tweet_id",
+              "displayName": "quoted_tweet_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoted_author_username",
+              "displayName": "quoted_author_username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoted_tweet_url",
+              "displayName": "quoted_tweet_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "quoted_full_text",
+              "displayName": "quoted_full_text",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "media_urls",
+              "displayName": "media_urls",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "drive_file_paths",
+              "displayName": "drive_file_paths",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1680,
+        144
+      ],
+      "id": "59d44f2e-710b-48b5-ba7a-30de48e0e25f",
+      "name": "Write to Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_CREDENTIAL_ID",
+          "name": "Google account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## WEBHOOK INTAKE & VALIDATION\nReceives tweets from TwitterAPI.io webhook\n- Validates API key for security\n- Normalizes tweet data format\n",
+        "height": 416,
+        "width": 608,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        -64
+      ],
+      "id": "50406a24-5ae8-4608-87a3-560cd81b95ac",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## REPLY ENRICHMENT\nFetches original tweets for replies\n- Batch fetches up to 100 tweets at a time\n- Adds context to reply tweets",
+        "height": 416,
+        "width": 224,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -384,
+        -64
+      ],
+      "id": "bb5d6264-ba22-45bd-b385-8c2a09e1db1e",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## DATA FORMATTING\nFormats tweet data for Google Sheets\n- Extracts media URLs\n- Structures all 14 fields\n",
+        "height": 416,
+        "width": 192,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -80
+      ],
+      "id": "e5207a43-b63a-4212-8732-711108f1accc",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## MERGE & WRITE\nFinal output stage\n- Merges tweets with/without media\n- Writes all data to Google Sheets\n- Updates existing tweets (no duplicates)",
+        "height": 384,
+        "width": 416,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1456,
+        -64
+      ],
+      "id": "e1d6f610-9f5c-412f-81ae-db2ef94feac8",
+      "name": "Sticky Note5"
+    },
+    {
+      "parameters": {
+        "content": "## MEDIA PROCESSING PIPELINE\nHandles tweets with media attachments\n- Downloads images/videos from Twitter\n- Uploads to Google Drive folder\n- Collects Drive links per tweet\n",
+        "height": 400,
+        "width": 1088,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        304,
+        -112
+      ],
+      "id": "e8837c6f-42c9-4134-9cd9-f99c40f79195",
+      "name": "Sticky Note6"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tweets = $input.all();\n\nconsole.log(`Processing ${tweets.length} tweets for quote enrichment`);\n\n// Enrich all tweets - check if quoted_tweet data already exists\nconst enrichedTweets = tweets.map(item => {\n  const tweet = item.json;\n  \n  // Check if this tweet has a quoted tweet\n  if (tweet.quoted_tweet && tweet.quoted_tweet.id) {\n    const quotedTweet = tweet.quoted_tweet;\n    \n    return {\n      json: {\n        ...tweet,\n        quoted_tweet_id: quotedTweet.id,\n        quoted_author_username: quotedTweet.author?.userName || '',\n        quoted_tweet_url: quotedTweet.url || quotedTweet.twitterUrl || `https://x.com/${quotedTweet.author?.userName}/status/${quotedTweet.id}`,\n        quoted_full_text: quotedTweet.text || ''\n      }\n    };\n  }\n  \n  // Not a quote tweet\n  return {\n    json: {\n      ...tweet,\n      quoted_tweet_id: '',\n      quoted_author_username: '',\n      quoted_tweet_url: '',\n      quoted_full_text: ''\n    }\n  };\n});\n\nconsole.log(`✅ Enriched ${enrichedTweets.length} tweets with quote data`);\nreturn enrichedTweets;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        144
+      ],
+      "id": "b7c89670-5bff-4d6c-988b-3d8bda88500a",
+      "name": "Fetch Quoted Tweets"
+    },
+    {
+      "parameters": {
+        "content": "## QUOTE TWEET ENRICHMENT\n- Adds: quoted tweet ID, author, URL, full text",
+        "height": 416,
+        "width": 192
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        -64
+      ],
+      "id": "bf416917-7da5-4c94-917d-2c6c0d90544b",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {
+    "Twitter Stream Webhook": [
+      {
+        "json": {
+          "headers": {
+            "host": "buanops.app.n8n.cloud",
+            "user-agent": "python-requests/2.32.3",
+            "content-length": "69260",
+            "accept": "*/*",
+            "accept-encoding": "gzip, br",
+            "cdn-loop": "cloudflare; loops=1; subreqs=1",
+            "cf-connecting-ip": "2a01:4ff:f0:d18::1",
+            "cf-ew-via": "15",
+            "cf-ipcountry": "US",
+            "cf-ray": "9cba74822e7bc562-IAD",
+            "cf-visitor": "{\"scheme\":\"https\"}",
+            "cf-worker": "n8n.cloud",
+            "content-type": "application/json",
+            "x-api-key": "new1_cefffedbddca4bf8b2425d44e370d0a3",
+            "x-forwarded-for": "2a01:4ff:f0:d18::1, 192.168.1.100",
+            "x-forwarded-host": "buanops.app.n8n.cloud",
+            "x-forwarded-port": "443",
+            "x-forwarded-proto": "https",
+            "x-forwarded-server": "traefik-prod-users-gwc-51-795c6dc87-h4dlc",
+            "x-is-trusted": "yes",
+            "x-real-ip": "2a01:4ff:f0:d18::1"
+          },
+          "params": {},
+          "query": {},
+          "body": {
+            "tweets": [
+              {
+                "type": "tweet",
+                "id": "2021111973383991476",
+                "url": "https://x.com/KevinLMak/status/2021111973383991476",
+                "twitterUrl": "https://twitter.com/KevinLMak/status/2021111973383991476",
+                "text": "@alokbhardwaj You'll see my first 13F in a few days. That gives an imprecise but comprehensive look at my holdings.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 0,
+                "quoteCount": 0,
+                "viewCount": 115,
+                "createdAt": "Tue Feb 10 06:40:19 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 1,
+                "isReply": true,
+                "inReplyToId": "2020959170695176274",
+                "conversationId": "2020925042138415205",
+                "displayTextRange": [
+                  14,
+                  115
+                ],
+                "inReplyToUserId": "17060445",
+                "inReplyToUsername": "alokbhardwaj",
+                "author": {
+                  "type": "user",
+                  "userName": "KevinLMak",
+                  "url": "https://x.com/KevinLMak",
+                  "twitterUrl": "https://twitter.com/KevinLMak",
+                  "id": "956250651486400512",
+                  "name": "Kevin Mak",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/956259329832710144/iYXdMys6_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "Stanford, CA",
+                  "followers": 28127,
+                  "following": 51,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Jan 24 19:41:36 +0000 2018",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 1569,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 472,
+                  "statusesCount": 4402,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1914906373084864685"
+                  ],
+                  "profile_bio": {
+                    "description": "Teaches economics and investing at Stanford GSB. Special sits HF mgr. https://t.co/kiKMwr0H4y || Not Financial Advice",
+                    "entities": {
+                      "description": {
+                        "urls": [
+                          {
+                            "display_url": "gsb.stanford.edu/faculty-resear…",
+                            "expanded_url": "https://www.gsb.stanford.edu/faculty-research/faculty/kevin-mak",
+                            "indices": [
+                              70,
+                              93
+                            ],
+                            "url": "https://t.co/kiKMwr0H4y"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "17060445",
+                      "indices": [
+                        0,
+                        13
+                      ],
+                      "name": "alok bhardwaj",
+                      "screen_name": "alokbhardwaj"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021062840094969941",
+                "url": "https://x.com/glbeaty/status/2021062840094969941",
+                "twitterUrl": "https://twitter.com/glbeaty/status/2021062840094969941",
+                "text": "@esch4ton @SowingAlphaSeed @orrdavid Having political opinions =/= trading on politics.\n\nThat said wew is there's a lot of alpha in exploiting trader's political biases, and boy does it scale.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 0,
+                "quoteCount": 0,
+                "viewCount": 21,
+                "createdAt": "Tue Feb 10 03:25:05 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2021032584504025384",
+                "conversationId": "2021025142575697965",
+                "displayTextRange": [
+                  37,
+                  192
+                ],
+                "inReplyToUserId": "3893508196",
+                "inReplyToUsername": "esch4ton",
+                "author": {
+                  "type": "user",
+                  "userName": "glbeaty",
+                  "url": "https://x.com/glbeaty",
+                  "twitterUrl": "https://twitter.com/glbeaty",
+                  "id": "3234152500",
+                  "name": "Grant",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1772820665445253120/E_sNVMxG_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/3234152500/1709245926",
+                  "description": "",
+                  "location": "",
+                  "followers": 3849,
+                  "following": 186,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Mon May 04 19:33:22 +0000 2015",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 728,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 551,
+                  "statusesCount": 2661,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [],
+                  "profile_bio": {
+                    "description": "Fintwit account of a rationalist, software dev & racecar driver turned long/short fund manager. Looking for IRR in all the wrong places. Mostly tweet bad ideas.",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "3893508196",
+                      "indices": [
+                        0,
+                        9
+                      ],
+                      "name": "eschaton",
+                      "screen_name": "esch4ton"
+                    },
+                    {
+                      "id_str": "1787225478333349889",
+                      "indices": [
+                        10,
+                        26
+                      ],
+                      "name": "Farmer",
+                      "screen_name": "SowingAlphaSeed"
+                    },
+                    {
+                      "id_str": "97739069",
+                      "indices": [
+                        27,
+                        36
+                      ],
+                      "name": "David Orr",
+                      "screen_name": "orrdavid"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021059035819393060",
+                "url": "https://x.com/glbeaty/status/2021059035819393060",
+                "twitterUrl": "https://twitter.com/glbeaty/status/2021059035819393060",
+                "text": "If this is AI-driven, maybe we're not far from money fleeing into limited resources: land, energy, minerals. Things that will be scarce in all but the most scifi of outcomes.\n\nTo be clear, although I'm an AI bull, I think we're pretty far from moves like that being rational.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 0,
+                "likeCount": 2,
+                "quoteCount": 0,
+                "viewCount": 361,
+                "createdAt": "Tue Feb 10 03:09:58 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2021057248336937381",
+                "conversationId": "2021057248336937381",
+                "displayTextRange": [
+                  0,
+                  275
+                ],
+                "inReplyToUserId": "3234152500",
+                "inReplyToUsername": "glbeaty",
+                "author": {
+                  "type": "user",
+                  "userName": "glbeaty",
+                  "url": "https://x.com/glbeaty",
+                  "twitterUrl": "https://twitter.com/glbeaty",
+                  "id": "3234152500",
+                  "name": "Grant",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1772820665445253120/E_sNVMxG_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/3234152500/1709245926",
+                  "description": "",
+                  "location": "",
+                  "followers": 3849,
+                  "following": 186,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Mon May 04 19:33:22 +0000 2015",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 728,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 551,
+                  "statusesCount": 2661,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [],
+                  "profile_bio": {
+                    "description": "Fintwit account of a rationalist, software dev & racecar driver turned long/short fund manager. Looking for IRR in all the wrong places. Mostly tweet bad ideas.",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {},
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021057248336937381",
+                "url": "https://x.com/glbeaty/status/2021057248336937381",
+                "twitterUrl": "https://twitter.com/glbeaty/status/2021057248336937381",
+                "text": "45x ttm earnings? Go home $WMT, you're drunk.\n\nLooks like a rare case of low implied volatility &amp; big over-valuation. Maybe they grow into it, but I doubt it? There's no cult like $COST's.\n\nSeems AI disruption is causing money to chase Quality At Any Price, like $MCO last month.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 5,
+                "quoteCount": 0,
+                "viewCount": 544,
+                "createdAt": "Tue Feb 10 03:02:52 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 1,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2021057248336937381",
+                "displayTextRange": [
+                  0,
+                  283
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "glbeaty",
+                  "url": "https://x.com/glbeaty",
+                  "twitterUrl": "https://twitter.com/glbeaty",
+                  "id": "3234152500",
+                  "name": "Grant",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1772820665445253120/E_sNVMxG_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/3234152500/1709245926",
+                  "description": "",
+                  "location": "",
+                  "followers": 3849,
+                  "following": 186,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Mon May 04 19:33:22 +0000 2015",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 728,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 551,
+                  "statusesCount": 2661,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [],
+                  "profile_bio": {
+                    "description": "Fintwit account of a rationalist, software dev & racecar driver turned long/short fund manager. Looking for IRR in all the wrong places. Mostly tweet bad ideas.",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "symbols": [
+                    {
+                      "indices": [
+                        26,
+                        30
+                      ],
+                      "text": "WMT"
+                    },
+                    {
+                      "indices": [
+                        184,
+                        189
+                      ],
+                      "text": "COST"
+                    },
+                    {
+                      "indices": [
+                        267,
+                        271
+                      ],
+                      "text": "MCO"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021054239255278018",
+                "url": "https://x.com/Crussian17/status/2021054239255278018",
+                "twitterUrl": "https://twitter.com/Crussian17/status/2021054239255278018",
+                "text": "@rev_cap @plantmath1 They vote… hence they get the $",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 4,
+                "quoteCount": 0,
+                "viewCount": 639,
+                "createdAt": "Tue Feb 10 02:50:54 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020912734091546832",
+                "conversationId": "2020912734091546832",
+                "displayTextRange": [
+                  21,
+                  52
+                ],
+                "inReplyToUserId": "1436041825899487232",
+                "inReplyToUsername": "rev_cap",
+                "author": {
+                  "type": "user",
+                  "userName": "Crussian17",
+                  "url": "https://x.com/Crussian17",
+                  "twitterUrl": "https://twitter.com/Crussian17",
+                  "id": "563035061",
+                  "name": "TrumpGrift Capital🇺🇦",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1619851778920693761/XFhNJqXG_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "San Francisco, CA",
+                  "followers": 24523,
+                  "following": 1279,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Apr 25 17:04:34 +0000 2012",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 19246,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 1560,
+                  "statusesCount": 48872,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1351694323046207489"
+                  ],
+                  "profile_bio": {
+                    "description": "mostly investing opinions with some warriors basketball and politics sprinkled in. all opinions are my own and not any recommendation to others to buy/sell",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1436041825899487232",
+                      "indices": [
+                        0,
+                        8
+                      ],
+                      "name": "Rev Cap",
+                      "screen_name": "rev_cap"
+                    },
+                    {
+                      "id_str": "1130989956443365378",
+                      "indices": [
+                        9,
+                        20
+                      ],
+                      "name": "Plant",
+                      "screen_name": "plantmath1"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021037493370466376",
+                "url": "https://x.com/DeepSailCapital/status/2021037493370466376",
+                "twitterUrl": "https://twitter.com/DeepSailCapital/status/2021037493370466376",
+                "text": "Creating a part 2 to The Great Software Reckoning to cover even more SaaS, Software, and Software adjacent companies.  Any specific name you want me to cover?",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 5,
+                "likeCount": 9,
+                "quoteCount": 0,
+                "viewCount": 8137,
+                "createdAt": "Tue Feb 10 01:44:22 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 19,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2021037493370466376",
+                "displayTextRange": [
+                  0,
+                  158
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "DeepSailCapital",
+                  "url": "https://x.com/DeepSailCapital",
+                  "twitterUrl": "https://twitter.com/DeepSailCapital",
+                  "id": "1480535438",
+                  "name": "Deep Sail Capital",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1537601732372574213/x7Iy3p5Z_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1480535438/1655427942",
+                  "description": "",
+                  "location": "",
+                  "followers": 56014,
+                  "following": 1389,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Mon Jun 03 19:59:29 +0000 2013",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 39549,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 3294,
+                  "statusesCount": 33453,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2014774579940442180"
+                  ],
+                  "profile_bio": {
+                    "description": "Quality, Growth, and Microcap Investor. Long/Short GARP Investment Fund, email: user@example.com\nShorts & Squeeze Corner: https://shortscorner.substack",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "deepsailcapital.com",
+                            "expanded_url": "http://deepsailcapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/qOINgL4yZE"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {},
+                "quoted_tweet": {
+                  "type": "tweet",
+                  "id": "2019093020659052866",
+                  "url": "https://x.com/DeepSailCapital/status/2019093020659052866",
+                  "twitterUrl": "https://twitter.com/DeepSailCapital/status/2019093020659052866",
+                  "text": "The Great Software Reckoning of 2026: What to short, what to buy https://t.co/6MTTfNO5vK https://t.co/E1PJzDHzzk",
+                  "source": "Twitter for iPhone",
+                  "retweetCount": 2,
+                  "replyCount": 0,
+                  "likeCount": 48,
+                  "quoteCount": 0,
+                  "viewCount": 18815,
+                  "createdAt": "Wed Feb 04 16:57:43 +0000 2026",
+                  "lang": "en",
+                  "bookmarkCount": 80,
+                  "isReply": false,
+                  "inReplyToId": null,
+                  "conversationId": "2019093020659052866",
+                  "displayTextRange": [
+                    0,
+                    88
+                  ],
+                  "inReplyToUserId": null,
+                  "inReplyToUsername": null,
+                  "author": {
+                    "type": "user",
+                    "userName": "DeepSailCapital",
+                    "url": "https://x.com/DeepSailCapital",
+                    "twitterUrl": "https://twitter.com/DeepSailCapital",
+                    "id": "1480535438",
+                    "name": "Deep Sail Capital",
+                    "isVerified": false,
+                    "isBlueVerified": true,
+                    "verifiedType": null,
+                    "profilePicture": "https://pbs.twimg.com/profile_images/1537601732372574213/x7Iy3p5Z_normal.jpg",
+                    "coverPicture": "https://pbs.twimg.com/profile_banners/1480535438/1655427942",
+                    "description": "",
+                    "location": "",
+                    "followers": 56014,
+                    "following": 1389,
+                    "status": "",
+                    "canDm": true,
+                    "canMediaTag": false,
+                    "createdAt": "Mon Jun 03 19:59:29 +0000 2013",
+                    "entities": {
+                      "description": {
+                        "urls": []
+                      },
+                      "url": {}
+                    },
+                    "fastFollowersCount": 0,
+                    "favouritesCount": 39549,
+                    "hasCustomTimelines": true,
+                    "isTranslator": false,
+                    "mediaCount": 3294,
+                    "statusesCount": 33453,
+                    "withheldInCountries": [],
+                    "affiliatesHighlightedLabel": {},
+                    "possiblySensitive": false,
+                    "pinnedTweetIds": [
+                      "2014774579940442180"
+                    ],
+                    "profile_bio": {
+                      "description": "Quality, Growth, and Microcap Investor. Long/Short GARP Investment Fund, email: user@example.com\nShorts & Squeeze Corner: https://shortscorner.substack",
+                      "entities": {
+                        "description": {},
+                        "url": {
+                          "urls": [
+                            {
+                              "display_url": "deepsailcapital.com",
+                              "expanded_url": "http://deepsailcapital.com",
+                              "indices": [
+                                0,
+                                23
+                              ],
+                              "url": "https://t.co/qOINgL4yZE"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "isAutomated": false,
+                    "automatedBy": null
+                  },
+                  "extendedEntities": {
+                    "media": [
+                      {
+                        "display_url": "pic.twitter.com/E1PJzDHzzk",
+                        "expanded_url": "https://twitter.com/DeepSailCapital/status/2019093020659052866/photo/1",
+                        "ext_media_availability": {
+                          "status": "Available"
+                        },
+                        "features": {
+                          "large": {},
+                          "orig": {}
+                        },
+                        "id_str": "2019092973699452929",
+                        "indices": [
+                          89,
+                          112
+                        ],
+                        "media_key": "3_2019092973699452929",
+                        "media_results": {
+                          "id": "QXBpTWVkaWFSZXN1bHRzOgwAAQoAARwFQlyp19ABCgACHAVCZ5jacUIAAA==",
+                          "result": {
+                            "__typename": "ApiMedia",
+                            "id": "QXBpTWVkaWE6DAABCgABHAVCXKnX0AEKAAIcBUJnmNpxQgAA",
+                            "media_key": "3_2019092973699452929"
+                          }
+                        },
+                        "media_url_https": "https://pbs.twimg.com/media/HAVCXKnX0AE08hL.jpg",
+                        "original_info": {
+                          "focus_rects": [
+                            {
+                              "h": 605,
+                              "w": 1080,
+                              "x": 0,
+                              "y": 610
+                            },
+                            {
+                              "h": 1080,
+                              "w": 1080,
+                              "x": 0,
+                              "y": 372
+                            },
+                            {
+                              "h": 1231,
+                              "w": 1080,
+                              "x": 0,
+                              "y": 297
+                            },
+                            {
+                              "h": 1920,
+                              "w": 960,
+                              "x": 60,
+                              "y": 0
+                            },
+                            {
+                              "h": 1920,
+                              "w": 1080,
+                              "x": 0,
+                              "y": 0
+                            }
+                          ],
+                          "height": 1920,
+                          "width": 1080
+                        },
+                        "sizes": {
+                          "large": {
+                            "h": 1920,
+                            "w": 1080
+                          }
+                        },
+                        "type": "photo",
+                        "url": "https://t.co/E1PJzDHzzk"
+                      }
+                    ]
+                  },
+                  "card": null,
+                  "place": {},
+                  "entities": {
+                    "urls": [
+                      {
+                        "display_url": "open.substack.com/pub/shortscorn…",
+                        "expanded_url": "https://open.substack.com/pub/shortscorner/p/the-great-software-reckoning-of-2026?r=2y44z&utm_campaign=post&utm_medium=web&showWelcomeOnShare=true",
+                        "indices": [
+                          65,
+                          88
+                        ],
+                        "url": "https://t.co/6MTTfNO5vK"
+                      }
+                    ]
+                  },
+                  "quoted_tweet": null,
+                  "retweeted_tweet": null,
+                  "isLimitedReply": false,
+                  "article": null
+                },
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021036639771120046",
+                "url": "https://x.com/robbezdjian/status/2021036639771120046",
+                "twitterUrl": "https://twitter.com/robbezdjian/status/2021036639771120046",
+                "text": "@alottabrakes You need to tell me what this meme is from.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 1,
+                "quoteCount": 0,
+                "viewCount": 13,
+                "createdAt": "Tue Feb 10 01:40:58 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2021001738707505212",
+                "conversationId": "2020985084061548589",
+                "displayTextRange": [
+                  14,
+                  57
+                ],
+                "inReplyToUserId": "1875595576068235264",
+                "inReplyToUsername": "alottabrakes",
+                "author": {
+                  "type": "user",
+                  "userName": "robbezdjian",
+                  "url": "https://x.com/robbezdjian",
+                  "twitterUrl": "https://twitter.com/robbezdjian",
+                  "id": "1347365258495623170",
+                  "name": "Rob Bezdjian",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1895245865662717952/UffVgndX_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1347365258495623170/1770432783",
+                  "description": "",
+                  "location": "global",
+                  "followers": 2271,
+                  "following": 1065,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Fri Jan 08 02:11:35 +0000 2021",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 9777,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 1390,
+                  "statusesCount": 9125,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1971655205705204094"
+                  ],
+                  "profile_bio": {
+                    "description": "Investor Advocate | Whistleblower | Uncovering fraud in Wall Street’s structured products (LETFs) |  Transparent models that consistently outperform and expose",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "frawdresearch.com",
+                            "expanded_url": "http://www.frawdresearch.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/UYAOdPXHxn"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1875595576068235264",
+                      "indices": [
+                        0,
+                        13
+                      ],
+                      "name": "alOttaBrakes",
+                      "screen_name": "alottabrakes"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2021008669236961696",
+                "url": "https://x.com/puppyeh1/status/2021008669236961696",
+                "twitterUrl": "https://twitter.com/puppyeh1/status/2021008669236961696",
+                "text": "@koala_capital You worried about it? You sound worried. I could be wrong…",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 0,
+                "quoteCount": 0,
+                "viewCount": 209,
+                "createdAt": "Mon Feb 09 23:49:49 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2021006051491872889",
+                "conversationId": "2020660640864674103",
+                "displayTextRange": [
+                  15,
+                  73
+                ],
+                "inReplyToUserId": "354252172",
+                "inReplyToUsername": "koala_capital",
+                "author": {
+                  "type": "user",
+                  "userName": "puppyeh1",
+                  "url": "https://x.com/puppyeh1",
+                  "twitterUrl": "https://twitter.com/puppyeh1",
+                  "id": "2841267029",
+                  "name": "Jeremy Raper",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1624768492787621888/CwnUYImg_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/2841267029/1614317417",
+                  "description": "",
+                  "location": "Sydney, New South Wales",
+                  "followers": 53913,
+                  "following": 1280,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Oct 22 16:59:50 +0000 2014",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 26854,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 2402,
+                  "statusesCount": 24968,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2017112304845017389"
+                  ],
+                  "profile_bio": {
+                    "description": "Nothing I say/tweet/emoji is investment advice, and is solely for entertainment only. Always DYODD, I am not your fiduciary!",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "rapercapital.com",
+                            "expanded_url": "http://www.rapercapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/v2WL7ozu0b"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "354252172",
+                      "indices": [
+                        0,
+                        14
+                      ],
+                      "name": "Lloyd Moffatt",
+                      "screen_name": "koala_capital"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020985084061548589",
+                "url": "https://x.com/robbezdjian/status/2020985084061548589",
+                "twitterUrl": "https://twitter.com/robbezdjian/status/2020985084061548589",
+                "text": "As an FYI, the reasons listed below are reasons why you SHOULD invest.\n\nThis is how the world works.\n\nDisclosure:  short $smst $mstz",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 4,
+                "quoteCount": 0,
+                "viewCount": 352,
+                "createdAt": "Mon Feb 09 22:16:06 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2020985084061548589",
+                "displayTextRange": [
+                  0,
+                  132
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "robbezdjian",
+                  "url": "https://x.com/robbezdjian",
+                  "twitterUrl": "https://twitter.com/robbezdjian",
+                  "id": "1347365258495623170",
+                  "name": "Rob Bezdjian",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1895245865662717952/UffVgndX_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1347365258495623170/1770432783",
+                  "description": "",
+                  "location": "global",
+                  "followers": 2271,
+                  "following": 1065,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Fri Jan 08 02:11:35 +0000 2021",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 9777,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 1390,
+                  "statusesCount": 9125,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1971655205705204094"
+                  ],
+                  "profile_bio": {
+                    "description": "Investor Advocate | Whistleblower | Uncovering fraud in Wall Street’s structured products (LETFs) |  Transparent models that consistently outperform and expose",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "frawdresearch.com",
+                            "expanded_url": "http://www.frawdresearch.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/UYAOdPXHxn"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "symbols": [
+                    {
+                      "indices": [
+                        121,
+                        126
+                      ],
+                      "text": "smst"
+                    },
+                    {
+                      "indices": [
+                        127,
+                        132
+                      ],
+                      "text": "mstz"
+                    }
+                  ]
+                },
+                "quoted_tweet": {
+                  "type": "tweet",
+                  "id": "2020968586727079994",
+                  "url": "https://x.com/Brennan_BTC22/status/2020968586727079994",
+                  "twitterUrl": "https://twitter.com/Brennan_BTC22/status/2020968586727079994",
+                  "text": "Remember the CEO and company that overstated their revenue and earnings for 3 years and the SEC filed civil accounting fraud charges and the stock dropped 96% over a nine month period as a result? Then the CEO had to pay a $350,000 fine and the company had to pay out $10,000,000 in disgorgement to shareholders. The largest ever at the time. \n\nRemember the Executive Chairman and company that paid $40 million as the result of a tax fraud lawsuit filed by the D.C. Attorney General? The Executive Chairman openly bragged about his tax fraud scheme and called people that paid D.C. taxes “stupid.” Employees of the company were also complacent in falsifying W-2 information for the Executive Chairman. \n\nRemember the Executive Chairman and company that claim to have bought 700k+ Bitcoin but refuse to provide Proof of Reserves? The same company that has convinced its shareholders that diluting them to purchase Bitcoin is a real business model all the while the stock is down 75% from all time highs. \n\nHistory doesn’t repeat itself, but it often rhymes. Buffett famously said he looks for three traits: integrity, intelligence, and energy. He emphasizes that without integrity, the other two traits will destroy a company.\n\nAre we watching the destruction play out in real time? $MSTR",
+                  "source": "Twitter for iPhone",
+                  "retweetCount": 17,
+                  "replyCount": 30,
+                  "likeCount": 113,
+                  "quoteCount": 5,
+                  "viewCount": 8904,
+                  "createdAt": "Mon Feb 09 21:10:33 +0000 2026",
+                  "lang": "en",
+                  "bookmarkCount": 15,
+                  "isReply": false,
+                  "inReplyToId": null,
+                  "conversationId": "2020968586727079994",
+                  "displayTextRange": [
+                    0,
+                    304
+                  ],
+                  "inReplyToUserId": null,
+                  "inReplyToUsername": null,
+                  "author": {
+                    "type": "user",
+                    "userName": "Brennan_BTC22",
+                    "url": "https://x.com/Brennan_BTC22",
+                    "twitterUrl": "https://twitter.com/Brennan_BTC22",
+                    "id": "1538064415957868544",
+                    "name": "Brennan",
+                    "isVerified": false,
+                    "isBlueVerified": true,
+                    "verifiedType": null,
+                    "profilePicture": "https://pbs.twimg.com/profile_images/2008724740794413056/DRLgQHlV_normal.jpg",
+                    "coverPicture": "https://pbs.twimg.com/profile_banners/1538064415957868544/1753738602",
+                    "description": "",
+                    "location": "",
+                    "followers": 2105,
+                    "following": 3578,
+                    "status": "",
+                    "canDm": false,
+                    "canMediaTag": true,
+                    "createdAt": "Sat Jun 18 07:42:17 +0000 2022",
+                    "entities": {
+                      "description": {
+                        "urls": []
+                      },
+                      "url": {}
+                    },
+                    "fastFollowersCount": 0,
+                    "favouritesCount": 10836,
+                    "hasCustomTimelines": true,
+                    "isTranslator": false,
+                    "mediaCount": 1617,
+                    "statusesCount": 7949,
+                    "withheldInCountries": [],
+                    "affiliatesHighlightedLabel": {},
+                    "possiblySensitive": false,
+                    "pinnedTweetIds": [
+                      "2004561045403414971"
+                    ],
+                    "profile_bio": {
+                      "description": "Flight/Critical Care Paramedic | Whitetail Hunter | Bitcoiner",
+                      "entities": {
+                        "description": {}
+                      }
+                    },
+                    "isAutomated": false,
+                    "automatedBy": null
+                  },
+                  "extendedEntities": {
+                    "media": [
+                      {
+                        "allow_download_status": {
+                          "allow_download": true
+                        },
+                        "display_url": "pic.twitter.com/eAT3AOHshM",
+                        "expanded_url": "https://twitter.com/Brennan_BTC22/status/2020968586727079994/photo/1",
+                        "ext_media_availability": {
+                          "status": "Available"
+                        },
+                        "features": {
+                          "large": {
+                            "faces": [
+                              {
+                                "h": 39,
+                                "w": 39,
+                                "x": 71,
+                                "y": 229
+                              }
+                            ]
+                          },
+                          "orig": {
+                            "faces": [
+                              {
+                                "h": 39,
+                                "w": 39,
+                                "x": 71,
+                                "y": 229
+                              }
+                            ]
+                          }
+                        },
+                        "id_str": "2020968580121001984",
+                        "indices": [
+                          305,
+                          328
+                        ],
+                        "media_key": "3_2020968580121001984",
+                        "media_results": {
+                          "id": "QXBpTWVkaWFSZXN1bHRzOgwAAQoAARwL7DdQVoAACgACHAvsONoXQDoAAA==",
+                          "result": {
+                            "__typename": "ApiMedia",
+                            "id": "QXBpTWVkaWE6DAABCgABHAvsN1BWgAAKAAIcC+w42hdAOgAA",
+                            "media_key": "3_2020968580121001984"
+                          }
+                        },
+                        "media_url_https": "https://pbs.twimg.com/media/HAvsN1BWgAA8YtI.jpg",
+                        "original_info": {
+                          "focus_rects": [
+                            {
+                              "h": 230,
+                              "w": 411,
+                              "x": 0,
+                              "y": 18
+                            },
+                            {
+                              "h": 411,
+                              "w": 411,
+                              "x": 0,
+                              "y": 0
+                            },
+                            {
+                              "h": 469,
+                              "w": 411,
+                              "x": 0,
+                              "y": 0
+                            },
+                            {
+                              "h": 486,
+                              "w": 243,
+                              "x": 109,
+                              "y": 0
+                            },
+                            {
+                              "h": 486,
+                              "w": 411,
+                              "x": 0,
+                              "y": 0
+                            }
+                          ],
+                          "height": 486,
+                          "width": 411
+                        },
+                        "sizes": {
+                          "large": {
+                            "h": 486,
+                            "w": 411
+                          }
+                        },
+                        "type": "photo",
+                        "url": "https://t.co/eAT3AOHshM"
+                      }
+                    ]
+                  },
+                  "card": null,
+                  "place": {},
+                  "entities": {
+                    "symbols": [
+                      {
+                        "indices": [
+                          1282,
+                          1287
+                        ],
+                        "text": "MSTR"
+                      }
+                    ]
+                  },
+                  "quoted_tweet": null,
+                  "retweeted_tweet": null,
+                  "isLimitedReply": false,
+                  "article": null
+                },
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020982637985472878",
+                "url": "https://x.com/robbezdjian/status/2020982637985472878",
+                "twitterUrl": "https://twitter.com/robbezdjian/status/2020982637985472878",
+                "text": "As we now approach my breakeven on the below (after all borrow fees). \n\nDo you think:\n\n1) I will indeed hit my 50% return target (low $30s)\n\nOr \n\n2) math stops mathing and Rob is laughed off of X\n\nDisclosure: stopped adding to $msts short and all new shorts are $mstz",
+                "source": "Twitter for iPhone",
+                "retweetCount": 1,
+                "replyCount": 0,
+                "likeCount": 1,
+                "quoteCount": 0,
+                "viewCount": 3326,
+                "createdAt": "Mon Feb 09 22:06:23 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2020982637985472878",
+                "displayTextRange": [
+                  0,
+                  267
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "robbezdjian",
+                  "url": "https://x.com/robbezdjian",
+                  "twitterUrl": "https://twitter.com/robbezdjian",
+                  "id": "1347365258495623170",
+                  "name": "Rob Bezdjian",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1895245865662717952/UffVgndX_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1347365258495623170/1770432783",
+                  "description": "",
+                  "location": "global",
+                  "followers": 2271,
+                  "following": 1065,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Fri Jan 08 02:11:35 +0000 2021",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 9777,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 1390,
+                  "statusesCount": 9125,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1971655205705204094"
+                  ],
+                  "profile_bio": {
+                    "description": "Investor Advocate | Whistleblower | Uncovering fraud in Wall Street’s structured products (LETFs) |  Transparent models that consistently outperform and expose",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "frawdresearch.com",
+                            "expanded_url": "http://www.frawdresearch.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/UYAOdPXHxn"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "symbols": [
+                    {
+                      "indices": [
+                        227,
+                        232
+                      ],
+                      "text": "msts"
+                    },
+                    {
+                      "indices": [
+                        262,
+                        267
+                      ],
+                      "text": "mstz"
+                    }
+                  ]
+                },
+                "quoted_tweet": {
+                  "type": "tweet",
+                  "id": "2009353110347731031",
+                  "url": "https://x.com/robbezdjian/status/2009353110347731031",
+                  "twitterUrl": "https://twitter.com/robbezdjian/status/2009353110347731031",
+                  "text": "Update — bookmark this.\n\nMy aggregate $SMST short is now positive (not showing initial sizing for privacy), but I still have ~5% of borrow fees to earn back. And yes — I’ve kept my commitment: short 1 share per day until we’re liberated… or until I hit +50% net (after borrow).\n\nYou may think this is a joke. It isn’t. South Korean youth — and ours too (through exposure you don’t even know you have) — are being siphoned out of their future by a product structurally designed to do exactly that.\n\nU.S. regulators are captured. It’s gross. It’s embarrassing. But the @FSC_Korea at least appears to understand the negative externalities and the generational damage this kind of “financial engineering” creates.\n\nDisclosure: I’m a whistleblower on these products. My work is public. My claims are math-based, defensible, and falsifiable.\n\nIf I’m wrong, it should take five minutes to prove it.\n\nIf I’m right, it takes 100,000 people watching — and lawyers, journalists, media, and financiers realizing there’s more fame and money in protecting investors than in splitting the spoils of ruining the future.\n\n**Current shares to borrow and rate\n\nRhetorical question? who sets the borrow rate? Do they benefit if the price of the security goes down?",
+                  "source": "Twitter for iPhone",
+                  "retweetCount": 0,
+                  "replyCount": 3,
+                  "likeCount": 4,
+                  "quoteCount": 1,
+                  "viewCount": 4352,
+                  "createdAt": "Thu Jan 08 19:54:48 +0000 2026",
+                  "lang": "en",
+                  "bookmarkCount": 1,
+                  "isReply": false,
+                  "inReplyToId": null,
+                  "conversationId": "2009353110347731031",
+                  "displayTextRange": [
+                    0,
+                    302
+                  ],
+                  "inReplyToUserId": null,
+                  "inReplyToUsername": null,
+                  "author": {
+                    "type": "user",
+                    "userName": "robbezdjian",
+                    "url": "https://x.com/robbezdjian",
+                    "twitterUrl": "https://twitter.com/robbezdjian",
+                    "id": "1347365258495623170",
+                    "name": "Rob Bezdjian",
+                    "isVerified": false,
+                    "isBlueVerified": true,
+                    "verifiedType": null,
+                    "profilePicture": "https://pbs.twimg.com/profile_images/1895245865662717952/UffVgndX_normal.jpg",
+                    "coverPicture": "https://pbs.twimg.com/profile_banners/1347365258495623170/1770432783",
+                    "description": "",
+                    "location": "global",
+                    "followers": 2271,
+                    "following": 1065,
+                    "status": "",
+                    "canDm": true,
+                    "canMediaTag": false,
+                    "createdAt": "Fri Jan 08 02:11:35 +0000 2021",
+                    "entities": {
+                      "description": {
+                        "urls": []
+                      },
+                      "url": {}
+                    },
+                    "fastFollowersCount": 0,
+                    "favouritesCount": 9777,
+                    "hasCustomTimelines": true,
+                    "isTranslator": false,
+                    "mediaCount": 1390,
+                    "statusesCount": 9125,
+                    "withheldInCountries": [],
+                    "affiliatesHighlightedLabel": {},
+                    "possiblySensitive": false,
+                    "pinnedTweetIds": [
+                      "1971655205705204094"
+                    ],
+                    "profile_bio": {
+                      "description": "Investor Advocate | Whistleblower | Uncovering fraud in Wall Street’s structured products (LETFs) |  Transparent models that consistently outperform and expose",
+                      "entities": {
+                        "description": {},
+                        "url": {
+                          "urls": [
+                            {
+                              "display_url": "frawdresearch.com",
+                              "expanded_url": "http://www.frawdresearch.com",
+                              "indices": [
+                                0,
+                                23
+                              ],
+                              "url": "https://t.co/UYAOdPXHxn"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "isAutomated": false,
+                    "automatedBy": null
+                  },
+                  "extendedEntities": {
+                    "media": [
+                      {
+                        "allow_download_status": {
+                          "allow_download": true
+                        },
+                        "display_url": "pic.twitter.com/IY3J3lloB2",
+                        "expanded_url": "https://twitter.com/robbezdjian/status/2009353110347731031/photo/1",
+                        "ext_media_availability": {
+                          "status": "Available"
+                        },
+                        "features": {
+                          "large": {},
+                          "orig": {}
+                        },
+                        "id_str": "2009348841158348800",
+                        "indices": [
+                          303,
+                          326
+                        ],
+                        "media_key": "3_2009348841158348800",
+                        "media_results": {
+                          "id": "QXBpTWVkaWFSZXN1bHRzOgwAAQoAARvipCADFhAACgACG+KoAgKaUFcAAA==",
+                          "result": {
+                            "__typename": "ApiMedia",
+                            "id": "QXBpTWVkaWE6DAABCgABG+KkIAMWEAAKAAIb4qgCAppQVwAA",
+                            "media_key": "3_2009348841158348800"
+                          }
+                        },
+                        "media_url_https": "https://pbs.twimg.com/media/G-KkIAMWEAAfscI.png",
+                        "original_info": {
+                          "focus_rects": [
+                            {
+                              "h": 779,
+                              "w": 1391,
+                              "x": 6,
+                              "y": 0
+                            },
+                            {
+                              "h": 779,
+                              "w": 779,
+                              "x": 312,
+                              "y": 0
+                            },
+                            {
+                              "h": 779,
+                              "w": 683,
+                              "x": 360,
+                              "y": 0
+                            },
+                            {
+                              "h": 779,
+                              "w": 390,
+                              "x": 506,
+                              "y": 0
+                            },
+                            {
+                              "h": 779,
+                              "w": 1403,
+                              "x": 0,
+                              "y": 0
+                            }
+                          ],
+                          "height": 779,
+                          "width": 1403
+                        },
+                        "sizes": {
+                          "large": {
+                            "h": 779,
+                            "w": 1403
+                          }
+                        },
+                        "type": "photo",
+                        "url": "https://t.co/IY3J3lloB2"
+                      }
+                    ]
+                  },
+                  "card": null,
+                  "place": {},
+                  "entities": {
+                    "symbols": [
+                      {
+                        "indices": [
+                          38,
+                          43
+                        ],
+                        "text": "SMST"
+                      }
+                    ],
+                    "user_mentions": [
+                      {
+                        "id_str": "632597654",
+                        "indices": [
+                          567,
+                          577
+                        ],
+                        "name": "Financial Services Commission - FSC Korea",
+                        "screen_name": "FSC_Korea"
+                      }
+                    ]
+                  },
+                  "quoted_tweet": {
+                    "type": "tweet",
+                    "id": "1993071546626375851",
+                    "url": "",
+                    "twitterUrl": "",
+                    "text": "",
+                    "source": "Twitter for iPhone",
+                    "retweetCount": 0,
+                    "replyCount": 0,
+                    "likeCount": 0,
+                    "quoteCount": 0,
+                    "viewCount": 0,
+                    "createdAt": "",
+                    "lang": "",
+                    "bookmarkCount": 0,
+                    "isReply": false,
+                    "inReplyToId": null,
+                    "conversationId": "",
+                    "displayTextRange": [],
+                    "inReplyToUserId": null,
+                    "inReplyToUsername": null,
+                    "author": {},
+                    "extendedEntities": {},
+                    "card": null,
+                    "place": {},
+                    "entities": {},
+                    "quoted_tweet": null,
+                    "retweeted_tweet": null,
+                    "isLimitedReply": false,
+                    "article": null
+                  },
+                  "retweeted_tweet": null,
+                  "isLimitedReply": false,
+                  "article": null
+                },
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020981529883889846",
+                "url": "https://x.com/puppyeh1/status/2020981529883889846",
+                "twitterUrl": "https://twitter.com/puppyeh1/status/2020981529883889846",
+                "text": "Calling the LDP “right wing” is pretty aggressive, but the point is taken. Centre right would be more appropriate imo",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 2,
+                "likeCount": 26,
+                "quoteCount": 0,
+                "viewCount": 6019,
+                "createdAt": "Mon Feb 09 22:01:59 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2020981529883889846",
+                "displayTextRange": [
+                  0,
+                  117
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "puppyeh1",
+                  "url": "https://x.com/puppyeh1",
+                  "twitterUrl": "https://twitter.com/puppyeh1",
+                  "id": "2841267029",
+                  "name": "Jeremy Raper",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1624768492787621888/CwnUYImg_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/2841267029/1614317417",
+                  "description": "",
+                  "location": "Sydney, New South Wales",
+                  "followers": 53913,
+                  "following": 1280,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Oct 22 16:59:50 +0000 2014",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 26854,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 2402,
+                  "statusesCount": 24968,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2017112304845017389"
+                  ],
+                  "profile_bio": {
+                    "description": "Nothing I say/tweet/emoji is investment advice, and is solely for entertainment only. Always DYODD, I am not your fiduciary!",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "rapercapital.com",
+                            "expanded_url": "http://www.rapercapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/v2WL7ozu0b"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {},
+                "quoted_tweet": {
+                  "type": "tweet",
+                  "id": "2020895734392873266",
+                  "url": "https://x.com/RealAlbanianPat/status/2020895734392873266",
+                  "twitterUrl": "https://twitter.com/RealAlbanianPat/status/2020895734392873266",
+                  "text": "Right-wing parties in Japan hold nearly 80% of the seats in the House of Representatives while left-wing parties only hold 5 in total https://t.co/Qu6zyJ60aO",
+                  "source": "Twitter for iPhone",
+                  "retweetCount": 628,
+                  "replyCount": 495,
+                  "likeCount": 9681,
+                  "quoteCount": 222,
+                  "viewCount": 475266,
+                  "createdAt": "Mon Feb 09 16:21:04 +0000 2026",
+                  "lang": "en",
+                  "bookmarkCount": 579,
+                  "isReply": false,
+                  "inReplyToId": null,
+                  "conversationId": "2020895734392873266",
+                  "displayTextRange": [
+                    0,
+                    133
+                  ],
+                  "inReplyToUserId": null,
+                  "inReplyToUsername": null,
+                  "author": {
+                    "type": "user",
+                    "userName": "RealAlbanianPat",
+                    "url": "https://x.com/RealAlbanianPat",
+                    "twitterUrl": "https://twitter.com/RealAlbanianPat",
+                    "id": "1423778411319808001",
+                    "name": "Charestiste🇨🇦🍁",
+                    "isVerified": false,
+                    "isBlueVerified": true,
+                    "verifiedType": null,
+                    "profilePicture": "https://pbs.twimg.com/profile_images/1872775779240554496/cm7TmBIc_normal.jpg",
+                    "coverPicture": "https://pbs.twimg.com/profile_banners/1423778411319808001/1757354567",
+                    "description": "",
+                    "location": "Ottawa",
+                    "followers": 25437,
+                    "following": 4375,
+                    "status": "",
+                    "canDm": true,
+                    "canMediaTag": true,
+                    "createdAt": "Fri Aug 06 22:50:07 +0000 2021",
+                    "entities": {
+                      "description": {
+                        "urls": []
+                      },
+                      "url": {}
+                    },
+                    "fastFollowersCount": 0,
+                    "favouritesCount": 64414,
+                    "hasCustomTimelines": true,
+                    "isTranslator": false,
+                    "mediaCount": 12960,
+                    "statusesCount": 29547,
+                    "withheldInCountries": [],
+                    "affiliatesHighlightedLabel": {},
+                    "possiblySensitive": false,
+                    "pinnedTweetIds": [
+                      "2017409381151682917"
+                    ],
+                    "profile_bio": {
+                      "description": "I DO NOT CONDUCT POLLS!!! | Election Modeller🗺️ | 🍁Owner of https://t.co/q7jukuUjyG\n\nSupport my works: https://t.co/Uqyfch2Cap",
+                      "entities": {
+                        "description": {
+                          "urls": [
+                            {
+                              "display_url": "poliwave.com",
+                              "expanded_url": "http://poliwave.com",
+                              "indices": [
+                                60,
+                                83
+                              ],
+                              "url": "https://t.co/q7jukuUjyG"
+                            },
+                            {
+                              "display_url": "buy.stripe.com/cN2eV74NfaOIbV…",
+                              "expanded_url": "https://buy.stripe.com/cN2eV74NfaOIbV6dQR",
+                              "indices": [
+                                103,
+                                126
+                              ],
+                              "url": "https://t.co/Uqyfch2Cap"
+                            }
+                          ]
+                        },
+                        "url": {
+                          "urls": [
+                            {
+                              "display_url": "poliwave.com",
+                              "expanded_url": "http://poliwave.com",
+                              "indices": [
+                                0,
+                                23
+                              ],
+                              "url": "https://t.co/q7jukuUjyG"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "isAutomated": false,
+                    "automatedBy": null
+                  },
+                  "extendedEntities": {
+                    "media": [
+                      {
+                        "allow_download_status": {
+                          "allow_download": true
+                        },
+                        "display_url": "pic.twitter.com/Qu6zyJ60aO",
+                        "expanded_url": "https://twitter.com/RealAlbanianPat/status/2020895734392873266/photo/1",
+                        "ext_media_availability": {
+                          "status": "Available"
+                        },
+                        "features": {
+                          "large": {},
+                          "orig": {}
+                        },
+                        "id_str": "2020895477571731456",
+                        "indices": [
+                          134,
+                          157
+                        ],
+                        "media_key": "3_2020895477571731456",
+                        "media_results": {
+                          "id": "QXBpTWVkaWFSZXN1bHRzOgwAAQoAARwLqbrM20AACgACHAup9piW4TIAAA==",
+                          "result": {
+                            "__typename": "ApiMedia",
+                            "id": "QXBpTWVkaWE6DAABCgABHAupuszbQAAKAAIcC6n2mJbhMgAA",
+                            "media_key": "3_2020895477571731456"
+                          }
+                        },
+                        "media_url_https": "https://pbs.twimg.com/media/HAupuszbQAAVxgO.png",
+                        "original_info": {
+                          "focus_rects": [
+                            {
+                              "h": 493,
+                              "w": 880,
+                              "x": 0,
+                              "y": 0
+                            },
+                            {
+                              "h": 615,
+                              "w": 615,
+                              "x": 22,
+                              "y": 0
+                            },
+                            {
+                              "h": 615,
+                              "w": 539,
+                              "x": 60,
+                              "y": 0
+                            },
+                            {
+                              "h": 615,
+                              "w": 308,
+                              "x": 175,
+                              "y": 0
+                            },
+                            {
+                              "h": 615,
+                              "w": 880,
+                              "x": 0,
+                              "y": 0
+                            }
+                          ],
+                          "height": 615,
+                          "width": 880
+                        },
+                        "sizes": {
+                          "large": {
+                            "h": 615,
+                            "w": 880
+                          }
+                        },
+                        "type": "photo",
+                        "url": "https://t.co/Qu6zyJ60aO"
+                      }
+                    ]
+                  },
+                  "card": null,
+                  "place": {},
+                  "entities": {},
+                  "quoted_tweet": null,
+                  "retweeted_tweet": null,
+                  "isLimitedReply": false,
+                  "article": null
+                },
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020980818420670650",
+                "url": "https://x.com/DeepSailCapital/status/2020980818420670650",
+                "twitterUrl": "https://twitter.com/DeepSailCapital/status/2020980818420670650",
+                "text": "@R_and_Invest @LogicalThesis Yeah but I’m saying there’s no more hyperscalers to add going forward",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 2,
+                "quoteCount": 0,
+                "viewCount": 70,
+                "createdAt": "Mon Feb 09 21:59:09 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020979736537858124",
+                "conversationId": "2020973300160266516",
+                "displayTextRange": [
+                  29,
+                  98
+                ],
+                "inReplyToUserId": "1942391883537461248",
+                "inReplyToUsername": "R_and_Invest",
+                "author": {
+                  "type": "user",
+                  "userName": "DeepSailCapital",
+                  "url": "https://x.com/DeepSailCapital",
+                  "twitterUrl": "https://twitter.com/DeepSailCapital",
+                  "id": "1480535438",
+                  "name": "Deep Sail Capital",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1537601732372574213/x7Iy3p5Z_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1480535438/1655427942",
+                  "description": "",
+                  "location": "",
+                  "followers": 56014,
+                  "following": 1389,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Mon Jun 03 19:59:29 +0000 2013",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 39549,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 3294,
+                  "statusesCount": 33453,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2014774579940442180"
+                  ],
+                  "profile_bio": {
+                    "description": "Quality, Growth, and Microcap Investor. Long/Short GARP Investment Fund, email: user@example.com\nShorts & Squeeze Corner: https://shortscorner.substack",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "deepsailcapital.com",
+                            "expanded_url": "http://deepsailcapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/qOINgL4yZE"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1942391883537461248",
+                      "indices": [
+                        0,
+                        13
+                      ],
+                      "name": "Research & Invest",
+                      "screen_name": "R_and_Invest"
+                    },
+                    {
+                      "id_str": "3236384046",
+                      "indices": [
+                        14,
+                        28
+                      ],
+                      "name": "Logical Thesis",
+                      "screen_name": "LogicalThesis"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020978539231883563",
+                "url": "https://x.com/DeepSailCapital/status/2020978539231883563",
+                "twitterUrl": "https://twitter.com/DeepSailCapital/status/2020978539231883563",
+                "text": "@LogicalThesis @R_and_Invest I don’t think they can keep growing at those rates.  Just scale and they are already now pretty fully penetrated in the major AI datacenter/hyperscalers.  \n\nThe real worry is how long is the AEC window before everything goes to optics.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 3,
+                "quoteCount": 0,
+                "viewCount": 323,
+                "createdAt": "Mon Feb 09 21:50:06 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020974037695103119",
+                "conversationId": "2020973300160266516",
+                "displayTextRange": [
+                  29,
+                  264
+                ],
+                "inReplyToUserId": "3236384046",
+                "inReplyToUsername": "LogicalThesis",
+                "author": {
+                  "type": "user",
+                  "userName": "DeepSailCapital",
+                  "url": "https://x.com/DeepSailCapital",
+                  "twitterUrl": "https://twitter.com/DeepSailCapital",
+                  "id": "1480535438",
+                  "name": "Deep Sail Capital",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1537601732372574213/x7Iy3p5Z_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1480535438/1655427942",
+                  "description": "",
+                  "location": "",
+                  "followers": 56014,
+                  "following": 1389,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Mon Jun 03 19:59:29 +0000 2013",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 39549,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 3294,
+                  "statusesCount": 33453,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2014774579940442180"
+                  ],
+                  "profile_bio": {
+                    "description": "Quality, Growth, and Microcap Investor. Long/Short GARP Investment Fund, email: user@example.com\nShorts & Squeeze Corner: https://shortscorner.substack",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "deepsailcapital.com",
+                            "expanded_url": "http://deepsailcapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/qOINgL4yZE"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "3236384046",
+                      "indices": [
+                        0,
+                        14
+                      ],
+                      "name": "Logical Thesis",
+                      "screen_name": "LogicalThesis"
+                    },
+                    {
+                      "id_str": "1942391883537461248",
+                      "indices": [
+                        15,
+                        28
+                      ],
+                      "name": "Research & Invest",
+                      "screen_name": "R_and_Invest"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020968517340889215",
+                "url": "https://x.com/puppyeh1/status/2020968517340889215",
+                "twitterUrl": "https://twitter.com/puppyeh1/status/2020968517340889215",
+                "text": "@the_analyst_24 This is about defraying the misunderstood tax risk. I make no claims to know the business inside out",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 0,
+                "likeCount": 1,
+                "quoteCount": 0,
+                "viewCount": 85,
+                "createdAt": "Mon Feb 09 21:10:16 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020885215611416788",
+                "conversationId": "2020657570260951331",
+                "displayTextRange": [
+                  16,
+                  116
+                ],
+                "inReplyToUserId": "1908893413304332288",
+                "inReplyToUsername": "the_analyst_24",
+                "author": {
+                  "type": "user",
+                  "userName": "puppyeh1",
+                  "url": "https://x.com/puppyeh1",
+                  "twitterUrl": "https://twitter.com/puppyeh1",
+                  "id": "2841267029",
+                  "name": "Jeremy Raper",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1624768492787621888/CwnUYImg_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/2841267029/1614317417",
+                  "description": "",
+                  "location": "Sydney, New South Wales",
+                  "followers": 53913,
+                  "following": 1280,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Oct 22 16:59:50 +0000 2014",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 26854,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 2402,
+                  "statusesCount": 24968,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2017112304845017389"
+                  ],
+                  "profile_bio": {
+                    "description": "Nothing I say/tweet/emoji is investment advice, and is solely for entertainment only. Always DYODD, I am not your fiduciary!",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "rapercapital.com",
+                            "expanded_url": "http://www.rapercapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/v2WL7ozu0b"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1908893413304332288",
+                      "indices": [
+                        0,
+                        15
+                      ],
+                      "name": "The Analyst",
+                      "screen_name": "the_analyst_24"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020964540079538425",
+                "url": "https://x.com/Crussian17/status/2020964540079538425",
+                "twitterUrl": "https://twitter.com/Crussian17/status/2020964540079538425",
+                "text": "Head of Agentforce left…",
+                "source": "Twitter for iPhone",
+                "retweetCount": 1,
+                "replyCount": 6,
+                "likeCount": 53,
+                "quoteCount": 3,
+                "viewCount": 14005,
+                "createdAt": "Mon Feb 09 20:54:28 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 15,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2020964540079538425",
+                "displayTextRange": [
+                  0,
+                  24
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "Crussian17",
+                  "url": "https://x.com/Crussian17",
+                  "twitterUrl": "https://twitter.com/Crussian17",
+                  "id": "563035061",
+                  "name": "TrumpGrift Capital🇺🇦",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1619851778920693761/XFhNJqXG_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "San Francisco, CA",
+                  "followers": 24523,
+                  "following": 1279,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Apr 25 17:04:34 +0000 2012",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 19246,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 1560,
+                  "statusesCount": 48872,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1351694323046207489"
+                  ],
+                  "profile_bio": {
+                    "description": "mostly investing opinions with some warriors basketball and politics sprinkled in. all opinions are my own and not any recommendation to others to buy/sell",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {},
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020944261529923917",
+                "url": "https://x.com/DeepSailCapital/status/2020944261529923917",
+                "twitterUrl": "https://twitter.com/DeepSailCapital/status/2020944261529923917",
+                "text": "@drowsyinvestor Really near long term uptrend support. https://t.co/6kh9VOTplE",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 0,
+                "likeCount": 1,
+                "quoteCount": 0,
+                "viewCount": 90,
+                "createdAt": "Mon Feb 09 19:33:53 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2019749294287331464",
+                "conversationId": "2019749294287331464",
+                "displayTextRange": [
+                  16,
+                  54
+                ],
+                "inReplyToUserId": "1350506884479012870",
+                "inReplyToUsername": "drowsyinvestor",
+                "author": {
+                  "type": "user",
+                  "userName": "DeepSailCapital",
+                  "url": "https://x.com/DeepSailCapital",
+                  "twitterUrl": "https://twitter.com/DeepSailCapital",
+                  "id": "1480535438",
+                  "name": "Deep Sail Capital",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1537601732372574213/x7Iy3p5Z_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/1480535438/1655427942",
+                  "description": "",
+                  "location": "",
+                  "followers": 56014,
+                  "following": 1389,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": false,
+                  "createdAt": "Mon Jun 03 19:59:29 +0000 2013",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 39549,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 3294,
+                  "statusesCount": 33453,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "2014774579940442180"
+                  ],
+                  "profile_bio": {
+                    "description": "Quality, Growth, and Microcap Investor. Long/Short GARP Investment Fund, email: user@example.com\nShorts & Squeeze Corner: https://shortscorner.substack",
+                    "entities": {
+                      "description": {},
+                      "url": {
+                        "urls": [
+                          {
+                            "display_url": "deepsailcapital.com",
+                            "expanded_url": "http://deepsailcapital.com",
+                            "indices": [
+                              0,
+                              23
+                            ],
+                            "url": "https://t.co/qOINgL4yZE"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {
+                  "media": [
+                    {
+                      "display_url": "pic.twitter.com/6kh9VOTplE",
+                      "expanded_url": "https://twitter.com/DeepSailCapital/status/2020944261529923917/photo/1",
+                      "ext_media_availability": {
+                        "status": "Available"
+                      },
+                      "features": {
+                        "large": {},
+                        "orig": {}
+                      },
+                      "id_str": "2020944257427636224",
+                      "indices": [
+                        55,
+                        78
+                      ],
+                      "media_key": "3_2020944257427636224",
+                      "media_results": {
+                        "id": "QXBpTWVkaWFSZXN1bHRzOgwAAQoAARwL1hg+1wAACgACHAvWGTNa8U0AAA==",
+                        "result": {
+                          "__typename": "ApiMedia",
+                          "id": "QXBpTWVkaWE6DAABCgABHAvWGD7XAAAKAAIcC9YZM1rxTQAA",
+                          "media_key": "3_2020944257427636224"
+                        }
+                      },
+                      "media_url_https": "https://pbs.twimg.com/media/HAvWGD7XAAAFdTP.jpg",
+                      "original_info": {
+                        "focus_rects": [
+                          {
+                            "h": 942,
+                            "w": 1682,
+                            "x": 366,
+                            "y": 0
+                          },
+                          {
+                            "h": 942,
+                            "w": 942,
+                            "x": 1013,
+                            "y": 0
+                          },
+                          {
+                            "h": 942,
+                            "w": 826,
+                            "x": 1071,
+                            "y": 0
+                          },
+                          {
+                            "h": 942,
+                            "w": 471,
+                            "x": 1249,
+                            "y": 0
+                          },
+                          {
+                            "h": 942,
+                            "w": 2048,
+                            "x": 0,
+                            "y": 0
+                          }
+                        ],
+                        "height": 942,
+                        "width": 2048
+                      },
+                      "sizes": {
+                        "large": {
+                          "h": 942,
+                          "w": 2048
+                        }
+                      },
+                      "type": "photo",
+                      "url": "https://t.co/6kh9VOTplE"
+                    }
+                  ]
+                },
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1350506884479012870",
+                      "indices": [
+                        0,
+                        15
+                      ],
+                      "name": "Drowsy Investor (Shooting the Bull Pod)",
+                      "screen_name": "drowsyinvestor"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020938023836254292",
+                "url": "https://x.com/KevinLMak/status/2020938023836254292",
+                "twitterUrl": "https://twitter.com/KevinLMak/status/2020938023836254292",
+                "text": "@mg3z3 @partners_road Bluff equity!",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 0,
+                "likeCount": 0,
+                "quoteCount": 0,
+                "viewCount": 174,
+                "createdAt": "Mon Feb 09 19:09:06 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020905657818312910",
+                "conversationId": "2020485861695959382",
+                "displayTextRange": [
+                  22,
+                  35
+                ],
+                "inReplyToUserId": "1445097790481203200",
+                "inReplyToUsername": "mg3z3",
+                "author": {
+                  "type": "user",
+                  "userName": "KevinLMak",
+                  "url": "https://x.com/KevinLMak",
+                  "twitterUrl": "https://twitter.com/KevinLMak",
+                  "id": "956250651486400512",
+                  "name": "Kevin Mak",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/956259329832710144/iYXdMys6_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "Stanford, CA",
+                  "followers": 28127,
+                  "following": 51,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Jan 24 19:41:36 +0000 2018",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 1569,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 472,
+                  "statusesCount": 4402,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1914906373084864685"
+                  ],
+                  "profile_bio": {
+                    "description": "Teaches economics and investing at Stanford GSB. Special sits HF mgr. https://t.co/kiKMwr0H4y || Not Financial Advice",
+                    "entities": {
+                      "description": {
+                        "urls": [
+                          {
+                            "display_url": "gsb.stanford.edu/faculty-resear…",
+                            "expanded_url": "https://www.gsb.stanford.edu/faculty-research/faculty/kevin-mak",
+                            "indices": [
+                              70,
+                              93
+                            ],
+                            "url": "https://t.co/kiKMwr0H4y"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1445097790481203200",
+                      "indices": [
+                        0,
+                        6
+                      ],
+                      "name": "mgz",
+                      "screen_name": "mg3z3"
+                    },
+                    {
+                      "id_str": "1357867720407154689",
+                      "indices": [
+                        7,
+                        21
+                      ],
+                      "name": "RiverRoadPartners",
+                      "screen_name": "partners_road"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020925042138415205",
+                "url": "https://x.com/KevinLMak/status/2020925042138415205",
+                "twitterUrl": "https://twitter.com/KevinLMak/status/2020925042138415205",
+                "text": "$PGY \n\nQuarter was soft and guidance soft.\n\nInteresting thing to consider is that last time this happened (2023 ish), the company \"stepped up\" and kept the revenue growth engine on (I think they said it was a strategic investment in the network). The result was growth stayed high but credit losses grew enormously. The market was very displeased with that, partially because this strategy was not communicated ahead of time. AFTER the losses occurred, it was explained \"this was a strategic decision to stay in the market to show our partners we're reliable etc.\"\n\nThis time around, with the credit market showing some signs of stress (not alarming... yet) they're intentionally pulling back, turning off the growth engine, and being conservative.\n\nIn one sense, they \"learned\" from the past mistake, but the question is, is it really a mistake? Large losses -> punish stock price, Slower growth -> punish stock price.\n\nThe bottom line is that they're still an \"early growing business\" that is exposed to the credit cycle. As they grow, build partnerships, and get leverage over their counterparties they can slowly reduce their sensitivity to the credit cycle, but it's a SLOW process.\n\nOverall my thesis of \"this is a business that might work, and their operational leverage is huge if it does work\" is still there. Very high risk stock though, and it swings around with earnings in a very volatile manner (both ways).\n\nI'm currently at a 2% weight.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 4,
+                "replyCount": 8,
+                "likeCount": 108,
+                "quoteCount": 0,
+                "viewCount": 17736,
+                "createdAt": "Mon Feb 09 18:17:31 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 32,
+                "isReply": false,
+                "inReplyToId": null,
+                "conversationId": "2020925042138415205",
+                "displayTextRange": [
+                  0,
+                  305
+                ],
+                "inReplyToUserId": null,
+                "inReplyToUsername": null,
+                "author": {
+                  "type": "user",
+                  "userName": "KevinLMak",
+                  "url": "https://x.com/KevinLMak",
+                  "twitterUrl": "https://twitter.com/KevinLMak",
+                  "id": "956250651486400512",
+                  "name": "Kevin Mak",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/956259329832710144/iYXdMys6_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "Stanford, CA",
+                  "followers": 28127,
+                  "following": 51,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Jan 24 19:41:36 +0000 2018",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 1569,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 472,
+                  "statusesCount": 4402,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1914906373084864685"
+                  ],
+                  "profile_bio": {
+                    "description": "Teaches economics and investing at Stanford GSB. Special sits HF mgr. https://t.co/kiKMwr0H4y || Not Financial Advice",
+                    "entities": {
+                      "description": {
+                        "urls": [
+                          {
+                            "display_url": "gsb.stanford.edu/faculty-resear…",
+                            "expanded_url": "https://www.gsb.stanford.edu/faculty-research/faculty/kevin-mak",
+                            "indices": [
+                              70,
+                              93
+                            ],
+                            "url": "https://t.co/kiKMwr0H4y"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "symbols": [
+                    {
+                      "indices": [
+                        0,
+                        4
+                      ],
+                      "text": "PGY"
+                    }
+                  ]
+                },
+                "quoted_tweet": {
+                  "type": "tweet",
+                  "id": "1987882964529627226",
+                  "url": "https://x.com/KevinLMak/status/1987882964529627226",
+                  "twitterUrl": "https://twitter.com/KevinLMak/status/1987882964529627226",
+                  "text": "$PGY\n\nQuarter was great, basically every financial metric is moving in the right direction.\n\nFLRPC is now at 5% which is great to see.\nCosts/expenses are under control, margins expanding.\nExtra disclosure regarding their write downs so investors can get a better feel for how that looks.\n\nWe can't forget that last year was a disaster with credit-related write downs. The story is that was a one-time (18 month) episode for the company and everything is up and to the right from here. With FLRPC margins up, balance sheet usage (credit retention) down, I'm inclined to believe them.\n\nIf that's true (which I accept is something people have different levels of skepticism about), the operating leverage of the business is immense and we're regularly seeing that in the numbers.\n\nIf that's false, the business is just exposed to credit cyclicality and markets cannot give it a meaningful multiple since its profits ebb and flow instead of move consistently.\n\nI'm getting increasingly convinced that they're in great shape and things only move up from here. It's still a very high risk stock, but I think the upside outweighs the downside.\n\nGenerally I write about PGY less these days because other contributors like @mountaingoatcap cover it better.\n\nCurrently a ~4% weight in my fund.",
+                  "source": "Twitter for iPhone",
+                  "retweetCount": 13,
+                  "replyCount": 8,
+                  "likeCount": 152,
+                  "quoteCount": 3,
+                  "viewCount": 45384,
+                  "createdAt": "Mon Nov 10 14:00:06 +0000 2025",
+                  "lang": "en",
+                  "bookmarkCount": 33,
+                  "isReply": false,
+                  "inReplyToId": null,
+                  "conversationId": "1987882964529627226",
+                  "displayTextRange": [
+                    0,
+                    305
+                  ],
+                  "inReplyToUserId": null,
+                  "inReplyToUsername": null,
+                  "author": {
+                    "type": "user",
+                    "userName": "KevinLMak",
+                    "url": "https://x.com/KevinLMak",
+                    "twitterUrl": "https://twitter.com/KevinLMak",
+                    "id": "956250651486400512",
+                    "name": "Kevin Mak",
+                    "isVerified": false,
+                    "isBlueVerified": true,
+                    "verifiedType": null,
+                    "profilePicture": "https://pbs.twimg.com/profile_images/956259329832710144/iYXdMys6_normal.jpg",
+                    "coverPicture": "",
+                    "description": "",
+                    "location": "Stanford, CA",
+                    "followers": 28127,
+                    "following": 51,
+                    "status": "",
+                    "canDm": true,
+                    "canMediaTag": true,
+                    "createdAt": "Wed Jan 24 19:41:36 +0000 2018",
+                    "entities": {
+                      "description": {
+                        "urls": []
+                      },
+                      "url": {}
+                    },
+                    "fastFollowersCount": 0,
+                    "favouritesCount": 1569,
+                    "hasCustomTimelines": true,
+                    "isTranslator": false,
+                    "mediaCount": 472,
+                    "statusesCount": 4402,
+                    "withheldInCountries": [],
+                    "affiliatesHighlightedLabel": {},
+                    "possiblySensitive": false,
+                    "pinnedTweetIds": [
+                      "1914906373084864685"
+                    ],
+                    "profile_bio": {
+                      "description": "Teaches economics and investing at Stanford GSB. Special sits HF mgr. https://t.co/kiKMwr0H4y || Not Financial Advice",
+                      "entities": {
+                        "description": {
+                          "urls": [
+                            {
+                              "display_url": "gsb.stanford.edu/faculty-resear…",
+                              "expanded_url": "https://www.gsb.stanford.edu/faculty-research/faculty/kevin-mak",
+                              "indices": [
+                                70,
+                                93
+                              ],
+                              "url": "https://t.co/kiKMwr0H4y"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "isAutomated": false,
+                    "automatedBy": null
+                  },
+                  "extendedEntities": {},
+                  "card": null,
+                  "place": {},
+                  "entities": {
+                    "symbols": [
+                      {
+                        "indices": [
+                          0,
+                          4
+                        ],
+                        "text": "PGY"
+                      }
+                    ],
+                    "user_mentions": [
+                      {
+                        "id_str": "1605784862186577921",
+                        "indices": [
+                          1214,
+                          1230
+                        ],
+                        "name": "Mountain Goat Capital",
+                        "screen_name": "mountaingoatcap"
+                      }
+                    ]
+                  },
+                  "quoted_tweet": null,
+                  "retweeted_tweet": null,
+                  "isLimitedReply": false,
+                  "article": null
+                },
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020922234165133792",
+                "url": "https://x.com/glbeaty/status/2020922234165133792",
+                "twitterUrl": "https://twitter.com/glbeaty/status/2020922234165133792",
+                "text": "@marc_slans What do you think the bond rating business will look like in 10 years? To me that probability tree looks pretty deep, so what multiple do you think $MCO was worth, if 40x was cheap? 50x?\n\nIt doesn't take much of a scare to give a 40x stock a haircut.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 1,
+                "likeCount": 0,
+                "quoteCount": 0,
+                "viewCount": 434,
+                "createdAt": "Mon Feb 09 18:06:22 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020614404660961720",
+                "conversationId": "2020614404660961720",
+                "displayTextRange": [
+                  12,
+                  262
+                ],
+                "inReplyToUserId": "3984173927",
+                "inReplyToUsername": "marc_slans",
+                "author": {
+                  "type": "user",
+                  "userName": "glbeaty",
+                  "url": "https://x.com/glbeaty",
+                  "twitterUrl": "https://twitter.com/glbeaty",
+                  "id": "3234152500",
+                  "name": "Grant",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/1772820665445253120/E_sNVMxG_normal.jpg",
+                  "coverPicture": "https://pbs.twimg.com/profile_banners/3234152500/1709245926",
+                  "description": "",
+                  "location": "",
+                  "followers": 3849,
+                  "following": 186,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Mon May 04 19:33:22 +0000 2015",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 728,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 551,
+                  "statusesCount": 2661,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [],
+                  "profile_bio": {
+                    "description": "Fintwit account of a rationalist, software dev & racecar driver turned long/short fund manager. Looking for IRR in all the wrong places. Mostly tweet bad ideas.",
+                    "entities": {
+                      "description": {}
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "symbols": [
+                    {
+                      "indices": [
+                        160,
+                        164
+                      ],
+                      "text": "MCO"
+                    }
+                  ],
+                  "user_mentions": [
+                    {
+                      "id_str": "3984173927",
+                      "indices": [
+                        0,
+                        11
+                      ],
+                      "name": "Marc Slans",
+                      "screen_name": "marc_slans"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              },
+              {
+                "type": "tweet",
+                "id": "2020876379605147666",
+                "url": "https://x.com/KevinLMak/status/2020876379605147666",
+                "twitterUrl": "https://twitter.com/KevinLMak/status/2020876379605147666",
+                "text": "@AustinAlley_ Good eye. I swapped into Feb $95C on Friday.\n\nSurprise earnings date announced before opex. Previously it wasn’t clear whether earnings would be before or after Feb opex.\n\nIMO it wasn’t priced into the feb options and the lower strike gives me more exposure.",
+                "source": "Twitter for iPhone",
+                "retweetCount": 0,
+                "replyCount": 0,
+                "likeCount": 2,
+                "quoteCount": 0,
+                "viewCount": 237,
+                "createdAt": "Mon Feb 09 15:04:09 +0000 2026",
+                "lang": "en",
+                "bookmarkCount": 0,
+                "isReply": true,
+                "inReplyToId": "2020844209583145096",
+                "conversationId": "2011130801291686124",
+                "displayTextRange": [
+                  14,
+                  272
+                ],
+                "inReplyToUserId": "1202643115577892864",
+                "inReplyToUsername": "AustinAlley_",
+                "author": {
+                  "type": "user",
+                  "userName": "KevinLMak",
+                  "url": "https://x.com/KevinLMak",
+                  "twitterUrl": "https://twitter.com/KevinLMak",
+                  "id": "956250651486400512",
+                  "name": "Kevin Mak",
+                  "isVerified": false,
+                  "isBlueVerified": true,
+                  "verifiedType": null,
+                  "profilePicture": "https://pbs.twimg.com/profile_images/956259329832710144/iYXdMys6_normal.jpg",
+                  "coverPicture": "",
+                  "description": "",
+                  "location": "Stanford, CA",
+                  "followers": 28127,
+                  "following": 51,
+                  "status": "",
+                  "canDm": true,
+                  "canMediaTag": true,
+                  "createdAt": "Wed Jan 24 19:41:36 +0000 2018",
+                  "entities": {
+                    "description": {
+                      "urls": []
+                    },
+                    "url": {}
+                  },
+                  "fastFollowersCount": 0,
+                  "favouritesCount": 1569,
+                  "hasCustomTimelines": true,
+                  "isTranslator": false,
+                  "mediaCount": 472,
+                  "statusesCount": 4402,
+                  "withheldInCountries": [],
+                  "affiliatesHighlightedLabel": {},
+                  "possiblySensitive": false,
+                  "pinnedTweetIds": [
+                    "1914906373084864685"
+                  ],
+                  "profile_bio": {
+                    "description": "Teaches economics and investing at Stanford GSB. Special sits HF mgr. https://t.co/kiKMwr0H4y || Not Financial Advice",
+                    "entities": {
+                      "description": {
+                        "urls": [
+                          {
+                            "display_url": "gsb.stanford.edu/faculty-resear…",
+                            "expanded_url": "https://www.gsb.stanford.edu/faculty-research/faculty/kevin-mak",
+                            "indices": [
+                              70,
+                              93
+                            ],
+                            "url": "https://t.co/kiKMwr0H4y"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "isAutomated": false,
+                  "automatedBy": null
+                },
+                "extendedEntities": {},
+                "card": null,
+                "place": {},
+                "entities": {
+                  "user_mentions": [
+                    {
+                      "id_str": "1202643115577892864",
+                      "indices": [
+                        0,
+                        13
+                      ],
+                      "name": "Austin Alley",
+                      "screen_name": "AustinAlley_"
+                    }
+                  ]
+                },
+                "quoted_tweet": null,
+                "retweeted_tweet": null,
+                "isLimitedReply": false,
+                "article": null
+              }
+            ],
+            "rule_id": "27613749cac24c82abf4e43ac10f422b",
+            "rule_tag": "georgia-monitor-part2",
+            "rule_value": "from:robbezdjian OR from:ljp0101 OR from:dkl1897 OR from:KevinLMak OR from:glbeaty OR from:puppyeh1 OR from:hkuppy OR from:DeepSailCapital OR from:harfangcap OR from:Crussian17 OR from:jeffkeller1 OR from:BeenThereCap",
+            "event_type": "tweet",
+            "timestamp": 1770714434878
+          },
+          "webhookUrl": "https://buanops.app.n8n.cloud/webhook/twitter-stream-monitor",
+          "executionMode": "production"
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Twitter Stream Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate API Key": {
+      "main": [
+        [
+          {
+            "node": "Normalize Webhook Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Webhook Tweets": {
+      "main": [
+        [
+          {
+            "node": "Fetch Original Tweets for Replies",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Original Tweets for Replies": {
+      "main": [
+        [
+          {
+            "node": "Fetch Quoted Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data for Sheets": {
+      "main": [
+        [
+          {
+            "node": "Check if Media Exists",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check if Media Exists": {
+      "main": [
+        [
+          {
+            "node": "Split Media URLs into Array",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Tweets (With & Without Media)",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Split Media URLs into Array": {
+      "main": [
+        [
+          {
+            "node": "Download Media File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Collect Drive Paths per Tweet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Media File": {
+      "main": [
+        [
+          {
+            "node": "Upload to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Drive Paths per Tweet": {
+      "main": [
+        [
+          {
+            "node": "Merge Tweets (With & Without Media)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Tweets (With & Without Media)": {
+      "main": [
+        [
+          {
+            "node": "Write to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Quoted Tweets": {
+      "main": [
+        [
+          {
+            "node": "Format Data for Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "a3745d91-7128-4d49-a037-8e67a3317bb6",
+  "meta": {
+    "instanceId": "ea080310760d6ce55c913ef3dfdb660355d79d1f4e60a1aa20929fed1f2e3b89"
+  },
+  "id": "M7dtj8yS3-IyGv4L0QWnH",
+  "tags": []
+}
